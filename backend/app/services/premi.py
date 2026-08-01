@@ -73,7 +73,8 @@ def proses_data_premi(
     kuartal: str, 
     tahun: str, 
     tipe_proses: str = "premi",
-    override_cob: str = None
+    override_cob: str = None,
+    deduplicate: bool = False  
 ):
     file_path = get_temp_file_path(file_id)
     periode_lengkap = f"{kuartal.upper()} {tahun}"
@@ -83,6 +84,8 @@ def proses_data_premi(
         raise ValueError(f"Config kolom untuk cedant '{cedant}' belum terdaftar di config.py")
         
     master_cols = MASTER_COLUMNS_PREMI[cedant_key]
+
+    
     
     # 1. Validasi Sheet
     excel_file = pd.ExcelFile(file_path)
@@ -156,6 +159,22 @@ def proses_data_premi(
         "spreading_of_risk_others": "spreading_of_risk_others"
     }
     df.rename(columns=rename_mapping, inplace=True)
+
+    if "premium_reinsurer_share" in df.columns:
+        sheet_lower = actual_sheet_name.lower().strip()
+        
+        # Jika berasal dari sheet QS
+        if "qs" in sheet_lower:
+            df["premium_reinsurer_share_qs"] = df["premium_reinsurer_share"]
+            df["premium_reinsurer_share_spl"] = None
+            
+        # Jika berasal dari sheet SPL / Surplus
+        elif "spl" in sheet_lower or "surplus" in sheet_lower:
+            df["premium_reinsurer_share_spl"] = df["premium_reinsurer_share"]
+            df["premium_reinsurer_share_qs"] = None
+            
+        # Hapus kolom generik lama agar tidak bentrok
+        df.drop(columns=["premium_reinsurer_share"], inplace=True)
     
     # 5. Inject Kolom Periode
     df['period'] = periode_lengkap
@@ -164,26 +183,30 @@ def proses_data_premi(
     for col in master_cols:
         if col not in df.columns:
             df[col] = None
-            
+
     # 7. Susun urutan kolom sesuai master_cols
     df_clean = df[master_cols].copy()
 
     # 8. Override COB Dinamis (Jika diminta dari API, misal "FIRE")
-    if override_cob and 'cob_type_of_cover' in df_clean.columns:
-        df_clean['cob_type_of_cover'] = override_cob.upper()
+    if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
+        if 'cob_type_of_cover' in df_clean.columns:
+            df_clean['cob_type_of_cover'] = override_cob.strip().upper()
     
     # 9. Sanitasi Kolom Numeric
     num_cols = [
         "no", "uw_year", "breakdown_of_si_md_building", "mb", "stock", "tpl", "bi", "other",
         "tsi_100", "cedants_share", "spreading_of_risk_or", "spreading_of_risk_qs",
         "spreading_of_risk_surplus", "spreading_of_risk_others", "premium_100",
-        "premium_rate", "premium_reinsurer_share"
+        "premium_rate", "premium_reinsurer_share_qs", "premium_reinsurer_share_spl"
     ]
     df_clean = clean_numeric_columns(df_clean, num_cols)
     
     # 10. Hapus baris kosong & Deduplikasi baris persis
     df_clean = df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period'])
-    df_clean = df_clean.drop_duplicates(keep='first')
+
+    # TOGGLE DEDUPLIKASI: Hanya jalankan jika user set deduplicate = True
+    if deduplicate:
+        df_clean = df_clean.drop_duplicates(keep='first')
     
     # 11. Konversi NaN ke None khusus untuk PostgreSQL (Gunakan replace murni NumPy)
     df_db = df_clean.astype(object).replace({np.nan: None})

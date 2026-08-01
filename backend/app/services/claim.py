@@ -66,7 +66,8 @@ def proses_data_claim(
     kuartal: str, 
     tahun: str, 
     tipe_proses: str = "claim",
-    override_cob: str = None
+    override_cob: str = None,
+    deduplicate: bool = False  # <-- Tambah parameter
 ):
     file_path = get_temp_file_path(file_id)
     periode_lengkap = f"{kuartal.upper()} {tahun}"
@@ -144,8 +145,9 @@ def proses_data_claim(
     df_clean = df[master_cols].copy()
     
     # --- LOGIC OVERRIDE COB DINAMIS ---
-    if override_cob and 'cob_type_of_cover' in df_clean.columns:
-        df_clean['cob_type_of_cover'] = override_cob.upper()
+    if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
+        if 'cob_type_of_cover' in df_clean.columns:
+            df_clean['cob_type_of_cover'] = override_cob.strip().upper()
     # ----------------------------------
     
     # 8. SANITASI KOLOM NUMERIC KLAIM
@@ -158,7 +160,10 @@ def proses_data_claim(
     
     # 9. Hapus baris kosong & Deduplikasi baris persis
     df_clean = df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period'])
-    df_clean = df_clean.drop_duplicates(keep='first')
+
+    # TOGGLE DEDUPLIKASI: Hanya jalankan jika user set deduplicate = True
+    if deduplicate:
+        df_clean = df_clean.drop_duplicates(keep='first')
     
     # 10. Konversi NaN ke None untuk simpan ke Postgres
     df_db = df_clean.where(pd.notnull(df_clean), None)

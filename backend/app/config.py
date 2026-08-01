@@ -23,7 +23,13 @@ MASTER_COLUMNS_PREMI = {
         "location", "zip_code", "period_of_insurance_start", "period_of_insurance_end",
         "cedants_share", "spreading_of_risk_or", "spreading_of_risk_qs",
         "spreading_of_risk_surplus", "spreading_of_risk_others", "premium_100",  # Gunakan premium_100 untuk Buana
-        "premium_rate", "premium_reinsurer_share", "new_renewal", "period"
+        "premium_rate", 
+
+        # --- DUA KOLOM TERPISAH ---
+        "premium_reinsurer_share_qs",
+        "premium_reinsurer_share_spl",
+        "new_renewal",
+        "period"
     ]
 }
 

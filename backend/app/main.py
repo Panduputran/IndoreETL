@@ -113,7 +113,8 @@ class ProcessETLRequest(BaseModel):
     target_sheet: str
     kuartal: str
     tahun: str
-    override_cob: str | None = None
+    override_cob: str | None = None  # Opsional: Jika diisi, COB di-override
+    deduplicate: bool = False        # Opsional: Default False (Tetap simpan data mentah)
 
 @app.post("/api/v1/process", tags=["ETL Services"])
 async def process_etl(payload: ProcessETLRequest):
@@ -128,7 +129,8 @@ async def process_etl(payload: ProcessETLRequest):
                 kuartal=payload.kuartal,
                 tahun=payload.tahun,
                 tipe_proses=payload.tipe_proses,
-                override_cob=payload.override_cob
+                override_cob=payload.override_cob,
+                deduplicate=payload.deduplicate
             )
             return {
                 "status": "success",
@@ -144,7 +146,8 @@ async def process_etl(payload: ProcessETLRequest):
                 kuartal=payload.kuartal,
                 tahun=payload.tahun,
                 tipe_proses=payload.tipe_proses,
-                override_cob=payload.override_cob
+                override_cob=payload.override_cob,
+                deduplicate=payload.deduplicate
             )
             return {
                 "status": "success",
@@ -181,7 +184,8 @@ async def process_etl_batch(payloads: List[ProcessETLRequest]):
                     kuartal=item.kuartal,
                     tahun=item.tahun,
                     tipe_proses=item.tipe_proses,
-                    override_cob=item.override_cob
+                    override_cob=item.override_cob,
+                    deduplicate=item.deduplicate  
                 )
             elif tipe == "claim":
                 hasil = proses_data_claim(
@@ -191,7 +195,8 @@ async def process_etl_batch(payloads: List[ProcessETLRequest]):
                     kuartal=item.kuartal,
                     tahun=item.tahun,
                     tipe_proses=item.tipe_proses,
-                    override_cob=item.override_cob
+                    override_cob=item.override_cob,
+                    deduplicate=item.deduplicate  
                 )
             else:
                 raise ValueError(f"Tipe proses '{item.tipe_proses}' tidak dikenal.")
@@ -225,4 +230,4 @@ async def process_etl_batch(payloads: List[ProcessETLRequest]):
         "total_success": total_success,
         "total_failed": total_failed,
         "batch_details": results
-    }
+    }   
