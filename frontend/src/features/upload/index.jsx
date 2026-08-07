@@ -1,0 +1,1 @@
+export { default as UploadWidget } from './components/UploadWidget';
