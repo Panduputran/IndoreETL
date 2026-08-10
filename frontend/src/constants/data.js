@@ -1,12 +1,14 @@
 // Data di bawah ini adalah data uji coba (dummy) untuk kebutuhan tampilan UI.
 
 export const CEDANTS = [
-  { code: 'CD-01', name: 'Cedant Contoh A' },
-  { code: 'CD-02', name: 'Cedant Contoh B' },
-  { code: 'CD-03', name: 'Cedant Contoh C' },
-  { code: 'CD-04', name: 'Cedant Contoh D' },
-  { code: 'CD-05', name: 'Cedant Contoh E' },
-]
+  { code: 'CD-01', name: 'PT Asuransi Askrida' },
+  { code: 'CD-02', name: 'PT Asuransi Takaful Keluarga' },
+  { code: 'CD-03', name: 'PT Asuransi Jasindo' },
+  { code: 'CD-04', name: 'PT Asuransi Central Asia (ACA)' },
+  { code: 'CD-05', name: 'PT Asuransi Tugu Pratama Indonesia' },
+  { code: 'CD-06', name: 'PT Asuransi Allianz Utama Indonesia' },
+  { code: 'CD-07', name: 'PT Asuransi Tripakarta' }
+];
 
 // ── Sidebar Navigation ────────────────────────────────────────────────────────
 // Ditambahkan properti `path` untuk mendukung React Router URL-based navigation

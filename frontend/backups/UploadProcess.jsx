@@ -5,9 +5,6 @@ import { PreviewTable } from '../preview';
 import SheetSelector from '../sheet-selection/components/SheetSelector';
 import Button from '../../components/ui/Button';
 
-// IMPORT MOCK DUMMY DATA 10 BARIS TERPISAH
-import { mockSheetData } from '../etl/data/mockSheetData';
-
 export default function UploadProcess({ onComplete }) {
   // Current Phase: 1 = Upload, 3 = Preview
   const [currentPhase, setCurrentPhase] = useState(1);
@@ -58,6 +55,29 @@ export default function UploadProcess({ onComplete }) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Mock Data Preview
+  const mockSheetData = {
+    'Premi QS': {
+      columns: ['policy_no', 'insured_name', 'cob', 'fire_tsi', 'fire_gross_premium', 'fire_commission'],
+      data: [
+        { _validationStatus: 'valid', _errorReason: null, policy_no: 'FIR-2026-001', insured_name: 'PT Sentosa Raya', cob: 'FIRE', fire_tsi: 'Rp 5.000.000.000', fire_gross_premium: 'Rp 25.000.000', fire_commission: 'Rp 3.750.000' },
+        { _validationStatus: 'invalid', _errorReason: 'Kolom Kosong (TSI & Premi Mandatori)', policy_no: 'FIR-2026-002', insured_name: 'CV Abadi Makmur', cob: 'FIRE', fire_tsi: '', fire_gross_premium: '', fire_commission: 'Rp 900.000' }
+      ]
+    },
+    'Claim QS': {
+      columns: ['claim_no', 'policy_no', 'insured_name', 'claim_amount', 'loss_date'],
+      data: [
+        { _validationStatus: 'valid', _errorReason: null, claim_no: 'CLM-2026-881', policy_no: 'FIR-2026-001', insured_name: 'PT Sentosa Raya', claim_amount: 'Rp 150.000.000', loss_date: '2026-05-12' }
+      ]
+    },
+    'Subro': {
+      columns: ['subro_no', 'claim_no', 'recovered_amount', 'recovery_date'],
+      data: [
+        { _validationStatus: 'valid', _errorReason: null, subro_no: 'SUB-2026-009', claim_no: 'CLM-2026-881', recovered_amount: 'Rp 45.000.000', recovery_date: '2026-06-20' }
+      ]
+    }
+  };
 
   const handleSheetSelectionChange = (newSheets) => {
     setSelectedSheets(newSheets);
@@ -131,13 +151,13 @@ export default function UploadProcess({ onComplete }) {
             </div>
           </div>
 
-          {/* CARD INFO TREATY CODE - COMPACT CLEAN UI */}
-          <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+          {/* CARD INFO TREATY CODE - CUSTOM DROPDOWN UI */}
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm relative">
             
             {/* Left Info */}
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                <FileText className="w-4.5 h-4.5" />
+              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                <FileText className="w-5 h-5" />
               </div>
               
               <div>
@@ -145,30 +165,35 @@ export default function UploadProcess({ onComplete }) {
                   <h4 className="font-bold text-slate-800 text-xs">Treaty Code Binding</h4>
                   
                   {treatyData.autoMatchedCode ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                       Auto-Detected
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                       Manual Required
                     </span>
                   )}
                 </div>
 
-                <p className="text-[10px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   Kode perjanjian reasuransi terikat yang akan digunakan pada data ini.
                 </p>
               </div>
             </div>
 
             {/* Right: Custom Dropdown UI */}
-            <div className="relative min-w-[260px]" ref={treatyDropdownRef}>
+            <div className="relative min-w-[280px]" ref={treatyDropdownRef}>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Kode Master Terpilih
+              </span>
+
+              {/* Trigger Button */}
               <button
                 type="button"
                 onClick={() => setIsTreatyOpen(!isTreatyOpen)}
-                className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl px-3 py-1.5 text-left flex items-center justify-between gap-2 shadow-sm transition-all focus:ring-2 focus:ring-blue-500/20"
+                className="w-full bg-white border border-slate-300 hover:border-slate-400 rounded-xl px-3.5 py-2 text-left flex items-center justify-between gap-2 shadow-sm transition-all focus:ring-2 focus:ring-blue-500/20"
               >
                 <div className="min-w-0">
                   <span className="font-mono font-bold text-blue-700 block text-xs truncate">
@@ -178,13 +203,13 @@ export default function UploadProcess({ onComplete }) {
                     {treatyData.name || 'Klik untuk memilih dari master'}
                   </span>
                 </div>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${isTreatyOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${isTreatyOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {/* Dropdown Options Menu */}
               {isTreatyOpen && (
-                <div className="absolute right-0 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                  <div className="p-1 max-h-[200px] overflow-y-auto space-y-0.5 custom-scrollbar">
+                <div className="absolute right-0 mt-1.5 w-full md:w-[320px] bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                  <div className="p-1.5 max-h-[220px] overflow-y-auto space-y-0.5 custom-scrollbar">
                     {masterTreaties.map((item, idx) => {
                       const isSelected = treatyData.selectedCode === item.code;
 
@@ -199,7 +224,7 @@ export default function UploadProcess({ onComplete }) {
                             });
                             setIsTreatyOpen(false);
                           }}
-                          className={`p-2 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                          className={`p-2.5 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2 ${
                             isSelected
                               ? 'bg-blue-50 text-blue-700 font-bold'
                               : 'hover:bg-slate-50 text-slate-700'
@@ -209,7 +234,7 @@ export default function UploadProcess({ onComplete }) {
                             <span className="font-mono text-xs block font-bold">{item.code}</span>
                             <span className="text-[10px] text-slate-400 block truncate font-normal">{item.name}</span>
                           </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                          {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
                         </div>
                       );
                     })}
@@ -220,12 +245,10 @@ export default function UploadProcess({ onComplete }) {
 
           </div>
 
-          {/* COMPONENT 1: SHEET SELECTOR (ADA TOMBOL PREVIEW + CHECKBOX) */}
+          {/* COMPONENT 1: SHEET SELECTOR */}
           <SheetSelector 
             sheets={availableSheets}
             selectedSheets={selectedSheets}
-            activePreviewSheet={activePreviewSheet}
-            onPreviewSelect={(sheetName) => setActivePreviewSheet(sheetName)}
             onSelect={handleSheetSelectionChange}
           />
 
@@ -241,20 +264,34 @@ export default function UploadProcess({ onComplete }) {
               </div>
             </div>
           ) : (
-            /* COMPONENT 2: TABLE PREVIEW + FILTER BAR */
-            <div className="space-y-3 pt-1">
-              
-              {/* FILTER BAR STATUS (SEMUA, VALID, INVALID) */}
-              <div className="flex items-center justify-between gap-3 bg-slate-50/80 px-3 py-2 rounded-xl border border-slate-200/80">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-slate-700">
-                    Menampilkan Preview: <span className="text-blue-600 font-bold">{activePreviewSheet}</span>
+            /* COMPONENT 2: TAB SWITCHER + FILTER STATUS */
+            <div className="space-y-3 pt-2">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+                
+                {/* Switcher Sheet Active */}
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 shrink-0">
+                    Sheet:
                   </span>
-                  <span className="text-[10px] text-slate-400">({totalRows} Baris)</span>
+                  {selectedSheets.map((sheetName) => (
+                    <button
+                      key={sheetName}
+                      type="button"
+                      onClick={() => setActivePreviewSheet(sheetName)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                        activePreviewSheet === sheetName
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                      }`}
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                      <span>{sheetName}</span>
+                    </button>
+                  ))}
                 </div>
 
                 {/* Filter Status Buttons */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 overflow-x-auto pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200/60">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 shrink-0 flex items-center gap-1">
                     <Filter className="w-3 h-3" /> Filter:
                   </span>
@@ -262,7 +299,7 @@ export default function UploadProcess({ onComplete }) {
                   <button
                     type="button"
                     onClick={() => setStatusFilter('all')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                       statusFilter === 'all'
                         ? 'bg-white text-slate-800 border border-slate-300 shadow-sm'
                         : 'text-slate-500 hover:text-slate-800'
@@ -276,7 +313,7 @@ export default function UploadProcess({ onComplete }) {
                   <button
                     type="button"
                     onClick={() => setStatusFilter('valid')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                       statusFilter === 'valid'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-sm'
                         : 'text-slate-500 hover:text-emerald-600'
@@ -290,7 +327,7 @@ export default function UploadProcess({ onComplete }) {
                   <button
                     type="button"
                     onClick={() => setStatusFilter('invalid')}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                       statusFilter === 'invalid'
                         ? 'bg-rose-50 text-rose-700 border border-rose-300 shadow-sm'
                         : 'text-slate-500 hover:text-rose-600'

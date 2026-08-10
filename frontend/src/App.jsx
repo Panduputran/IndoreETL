@@ -5,8 +5,13 @@ import MainLayout from './components/layout/MainLayout';
 
 // Import halaman (pages)
 import UploadBordero from './pages/UploadBordero';
-import DataPremi from './pages/DataPremi';
-import DataKlaim from './pages/DataKlaim';
+import FormFire from './pages/FormFire';
+import FormKredit from './pages/FormKredit';
+import Dashboard from './pages/Dashboard';
+import MasterMapping from './pages/MasterMapping';
+
+// 1. IMPORT KOMPONEN HAK CIPTA / IPR KAMU DI SINI (sesuaikan nama file & path-nya)
+import FormIpr from './pages/FormIpr'; 
 
 export default function App() {
   return (
@@ -20,11 +25,15 @@ export default function App() {
           <Route path="/upload" element={<UploadBordero />} />
           
           {/* UPDATE: Sesuaikan path ini dengan URL to="..." di MainLayout lu */}
-          <Route path="/bordero-premi" element={<DataPremi />} />
-          <Route path="/bordero-klaim" element={<DataKlaim />} />
-          
+          <Route path="/form-fire" element={<FormFire />} />
+          <Route path="/form-kredit" element={<FormKredit />} />
+          <Route path="/master/mapping" element={<MasterMapping />} />
+
+          {/* 2. TAMBAHKAN ROUTE IPR DI SINI */}
+          <Route path="/form-ipr" element={<FormIpr />} />
+
           {/* Halaman Dashboard (Masih Placeholder) */}
-          <Route path="/dashboard" element={<div className="p-10 text-slate-600">Dashboard (Coming Soon)</div>} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </MainLayout>
     </BrowserRouter>

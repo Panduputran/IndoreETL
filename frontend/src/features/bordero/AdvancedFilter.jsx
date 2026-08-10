@@ -3,62 +3,63 @@ import { useState } from 'react';
 export default function AdvancedFilter() {
     const [filterPeriodType, setFilterPeriodType] = useState('Range');
     
+    // State untuk Search Title
+    const [searchTitle, setSearchTitle] = useState('');
+
     // State khusus untuk Dropdown Cedant
     const [cedantSearch, setCedantSearch] = useState('');
     const [showCedantDropdown, setShowCedantDropdown] = useState(false);
 
-    // Dummy Data Rekomendasi Cedant
+    // Dummy Data Cedant yang Selaras dengan Seluruh Sistem
     const dummyCedants = [
-        "ALLIANZ", 
-        "ZURICH", 
-        "AMFS", 
-        "TUGU INSURANCE", 
-        "ASURANSI CENTRAL ASIA (ACA)", 
-        "ASURANSI TRI PAKARTA", 
-        "MAREIN", 
-        "REINDO"
+        "CDT-001 (Askrida)", 
+        "CDT-002 (Takaful)", 
+        "CDT-003 (Jasindo)", 
+        "CDT-004 (Central Asia)", 
+        "CDT-005 (Tugu Insurance)", 
+        "CDT-006 (Allianz)", 
+        "CDT-007 (Zurich)"
     ];
 
-    // Logika untuk filter rekomendasi sesuai huruf yang diketik
+    // Logika filter rekomendasi Cedant
     const filteredCedants = dummyCedants.filter(cedant => 
         cedant.toLowerCase().includes(cedantSearch.toLowerCase())
     );
 
     return (
-        <div className="flex flex-col xl:flex-row items-end gap-4 mb-6">
+        <div className="flex flex-col xl:flex-row items-end gap-3 mb-5 text-xs">
             
-            {/* 1. Cari & Pilih Cedant (Sekarang dengan Dropdown Autocomplete) */}
+            {/* 1. Cari & Pilih Cedant (Autocomplete) */}
             <div className="flex-1 w-full relative">
-                <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+                <label className="block font-semibold text-slate-700 mb-1.5">
                     Cari & Pilih Cedant
                 </label>
                 <div className="relative">
                     <input 
                         type="text" 
-                        placeholder="Pilih Cedant..." 
+                        placeholder="Pilih atau cari Cedant..." 
                         value={cedantSearch}
                         onChange={(e) => {
                             setCedantSearch(e.target.value);
                             setShowCedantDropdown(true);
                         }}
                         onFocus={() => setShowCedantDropdown(true)}
-                        // setTimeout dipakai supaya klik di list dropdown ke-register sebelum dropdown nutup
                         onBlur={() => setTimeout(() => setShowCedantDropdown(false), 200)}
-                        className="w-full pl-3 pr-10 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" 
+                        className="w-full pl-3 pr-8 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50 focus:bg-white text-xs font-medium transition-all" 
                     />
-                    <svg className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    <svg className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                 </div>
 
                 {/* Pop-up Rekomendasi List Cedant */}
                 {showCedantDropdown && (
-                    <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-50">
                         {filteredCedants.length > 0 ? (
                             filteredCedants.map((cedant, index) => (
                                 <li 
                                     key={index}
-                                    className="px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors"
+                                    className="px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600 font-medium cursor-pointer transition-colors"
                                     onClick={() => {
                                         setCedantSearch(cedant);
                                         setShowCedantDropdown(false);
@@ -68,7 +69,7 @@ export default function AdvancedFilter() {
                                 </li>
                             ))
                         ) : (
-                            <li className="px-3 py-2 text-sm text-slate-500 italic">
+                            <li className="px-3 py-2 text-xs text-slate-400 italic">
                                 Cedant tidak ditemukan
                             </li>
                         )}
@@ -76,40 +77,80 @@ export default function AdvancedFilter() {
                 )}
             </div>
 
-            {/* 2. Search Title */}
+            {/* 2. Search Title (Desain Diselaraskan) */}
             <div className="flex-1 w-full">
-                <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Search Title:</label>
+                <label className="block font-semibold text-slate-700 mb-1.5">Search Title:</label>
                 <div className="relative">
-                    <svg className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    <input type="text" placeholder="Cari Title..." className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                    <svg className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input 
+                        type="text" 
+                        placeholder="Cari berdasarkan judul / nama file..." 
+                        value={searchTitle}
+                        onChange={(e) => setSearchTitle(e.target.value)}
+                        className="w-full pl-8 pr-8 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 bg-slate-50 focus:bg-white text-xs font-medium transition-all" 
+                    />
+                    {searchTitle && (
+                        <button 
+                            type="button"
+                            onClick={() => setSearchTitle('')}
+                            className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                        >
+                            ✕
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* 3. Period Type */}
             <div>
-                <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Period Type</label>
-                <div className="flex border border-slate-200 rounded-lg overflow-hidden h-[38px]">
-                    <button onClick={() => setFilterPeriodType('Single')} className={`px-4 py-1.5 text-sm transition-colors ${filterPeriodType === 'Single' ? 'bg-blue-600 text-white font-medium' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Single</button>
-                    <button onClick={() => setFilterPeriodType('Range')} className={`px-4 py-1.5 text-sm transition-colors ${filterPeriodType === 'Range' ? 'bg-blue-600 text-white font-medium' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Range</button>
+                <label className="block font-semibold text-slate-700 mb-1.5">Period Type</label>
+                <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-slate-100 p-0.5 h-[34px]">
+                    <button 
+                        onClick={() => setFilterPeriodType('Single')} 
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                            filterPeriodType === 'Single' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'
+                        }`}
+                    >
+                        Single
+                    </button>
+                    <button 
+                        onClick={() => setFilterPeriodType('Range')} 
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                            filterPeriodType === 'Range' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'
+                        }`}
+                    >
+                        Range
+                    </button>
                 </div>
             </div>
 
             {/* 4 & 5. Date Pickers */}
             {filterPeriodType === 'Range' ? (
                 <>
-                    <div>
-                        <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Start Period</label>
-                        <input type="date" className="w-full xl:w-[150px] px-3 py-2 border border-slate-200 rounded-lg text-sm h-[38px]" />
+                    <div className="w-full xl:w-auto">
+                        <label className="block font-semibold text-slate-700 mb-1.5">Start Period</label>
+                        <input 
+                            type="date" 
+                            className="w-full xl:w-[140px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none focus:border-blue-500 text-slate-700 font-medium h-[34px]" 
+                        />
                     </div>
-                    <div>
-                        <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">End Period</label>
-                        <input type="date" className="w-full xl:w-[150px] px-3 py-2 border border-slate-200 rounded-lg text-sm h-[38px]" />
+                    <div className="w-full xl:w-auto">
+                        <label className="block font-semibold text-slate-700 mb-1.5">End Period</label>
+                        <input 
+                            type="date" 
+                            className="w-full xl:w-[140px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none focus:border-blue-500 text-slate-700 font-medium h-[34px]" 
+                        />
                     </div>
                 </>
             ) : (
-                <div>
-                    <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">Select Period</label>
-                    <input type="date" className="w-full xl:w-[150px] px-3 py-2 border border-slate-200 rounded-lg text-sm h-[38px]" />
+                <div className="w-full xl:w-auto">
+                    <label className="block font-semibold text-slate-700 mb-1.5">Select Period</label>
+                    <input 
+                        type="date" 
+                        className="w-full xl:w-[140px] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none focus:border-blue-500 text-slate-700 font-medium h-[34px]" 
+                    />
                 </div>
             )}
         </div>

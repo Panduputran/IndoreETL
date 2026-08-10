@@ -1,11 +1,12 @@
 import { useState, useRef } from 'react';
 
-export default function DragDrop({ onFiles }) {
+export default function DragDrop({ onFiles, disabled = false }) {
   const [isHovering, setIsHovering] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => {
     e.preventDefault();
+    if (disabled) return;
     setIsHovering(true);
   };
 
@@ -16,18 +17,24 @@ export default function DragDrop({ onFiles }) {
   const handleDrop = (e) => {
     e.preventDefault();
     setIsHovering(false);
+    if (disabled) return;
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      // Ubah FileList object jadi Array biar gampang di-map nanti
       onFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileSelect = (e) => {
+    if (disabled) return;
     if (e.target.files && e.target.files.length > 0) {
       onFiles(Array.from(e.target.files));
-      // Reset input value biar file yang sama bisa diupload ulang kalo dihapus
-      e.target.value = null; 
+      e.target.value = null; // Reset input value biar file yang sama bisa re-upload
     }
+  };
+
+  const handleClick = () => {
+    if (disabled) return;
+    fileInputRef.current?.click();
   };
 
   return (
@@ -35,38 +42,60 @@ export default function DragDrop({ onFiles }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onClick={() => fileInputRef.current?.click()}
-      className={`relative flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-2xl cursor-pointer transition-all duration-200 group ${
-        isHovering
-          ? 'border-blue-500 bg-blue-50/50'
-          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300'
+      onClick={handleClick}
+      className={`relative flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-2xl transition-all duration-200 group ${
+        disabled
+          ? 'border-slate-200 bg-slate-50/60 opacity-60 cursor-not-allowed'
+          : isHovering
+          ? 'border-blue-500 bg-blue-50/50 cursor-pointer'
+          : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300 cursor-pointer'
       }`}
     >
       <input
         type="file"
         multiple
-        accept=".xlsx, .xls, .xlsb"
+        accept=".xlsx, .xls, .xlsb, .csv"
         onChange={handleFileSelect}
         ref={fileInputRef}
+        disabled={disabled}
         className="hidden"
       />
 
       {/* Icon Upload Modern */}
-      <div className={`w-14 h-14 mb-4 rounded-full flex items-center justify-center transition-colors ${
-        isHovering ? 'bg-blue-100 text-blue-600' : 'bg-white shadow-sm border border-slate-100 text-slate-400 group-hover:text-blue-500'
-      }`}>
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+      <div
+        className={`w-12 h-12 mb-3 rounded-full flex items-center justify-center transition-colors ${
+          disabled
+            ? 'bg-slate-100 text-slate-300'
+            : isHovering
+            ? 'bg-blue-100 text-blue-600'
+            : 'bg-white shadow-sm border border-slate-100 text-slate-400 group-hover:text-blue-500'
+        }`}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+          />
         </svg>
       </div>
 
-      {/* Typography Minimalis */}
+      {/* Typography Minimalis & Dinamis */}
       <div className="text-center">
-        <p className="text-sm font-semibold text-slate-700">
-          Klik untuk pilih file <span className="text-slate-500 font-normal">atau seret ke area ini</span>
+        <p className="text-xs font-semibold text-slate-700">
+          {disabled ? (
+            <span className="text-slate-400">Pilih Nama Cedant terlebih dahulu</span>
+          ) : (
+            <>
+              Klik untuk pilih file <span className="text-slate-500 font-normal">atau seret ke area ini</span>
+            </>
+          )}
         </p>
-        <p className="text-xs text-slate-400 mt-2">
-          Mendukung ekstensi <span className="font-medium text-slate-500">.xlsx, .xls</span>
+        <p className="text-[10px] text-slate-400 mt-1">
+          {disabled
+            ? 'Form upload akan aktif setelah Cedant dipilih'
+            : 'Mendukung ekstensi .xlsx, .xls, .csv'}
         </p>
       </div>
     </div>

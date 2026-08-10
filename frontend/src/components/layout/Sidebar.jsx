@@ -2,176 +2,177 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function Sidebar() {
-  const location = useLocation();
-  
-  // State untuk melacak menu mana yang sedang dibuka (dropdown)
-  const [openDropdown, setOpenDropdown] = useState('');
+  const location = useLocation();
+  
+  // State untuk melacak menu mana yang sedang dibuka (dropdown)
+  const [openDropdown, setOpenDropdown] = useState('');
 
-  // Data menu yang sudah di-update: Form IPR dipisah & ditambah Master (Mapping)
-  const menuItems = [
-    { 
-      id: 'dashboard', 
-      label: 'Dashboard', 
-      path: '/dashboard', 
-      icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' 
-    },
-    { 
-      id: 'upload', 
-      label: 'Upload Bordero', 
-      path: '/upload', 
-      icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' 
-    },
-    {
-      id: 'bordero-cedant',
-      label: 'Bordero Cedant',
-      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
-      subItems: [
-        { id: 'cob', label: 'COB', path: '/form-cob' }
-      ]
-    },
-    {
-      id: 'master',
-      label: 'Master',
-      icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4', // Ikon Database
-      subItems: [
-        { id: 'mapping', label: 'Mapping', path: '/master/mapping' }
-      ]
-    },
-    { 
-      id: 'form-ipr', 
-      label: 'IPR', 
-      path: '/form-ipr', 
-      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' 
-    },
-    { 
-      id: 'premi', 
-      label: 'Data Premi', 
-      path: '/bordero-premi', 
-      icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' 
-    },
-    { 
-      id: 'klaim', 
-      label: 'Data Klaim', 
-      path: '/bordero-klaim', 
-      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' 
-    },
-  ];
+  // Data menu yang sudah di-update: Form IPR dipisah & ditambah Master (Mapping)
+  const menuItems = [
+    { 
+      id: 'dashboard', 
+      label: 'Dashboard', 
+      path: '/dashboard', 
+      icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' 
+    },
+    { 
+      id: 'upload', 
+      label: 'Upload Bordero', 
+      path: '/upload', 
+      icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' 
+    },
+    {
+      id: 'bordero-cedant',
+      label: 'Bordero Cedant',
+      icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+      subItems: [
+        { id: 'fire', label: 'FIRE', path: '/form-fire' },
+        { id: 'credit', label: 'CREDIT', path: '/form-kredit' }
+      ]
+    },
+    {
+      id: 'master',
+      label: 'Master',
+      icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4', // Ikon Database
+      subItems: [
+        { id: 'mapping', label: 'Mapping', path: '/master/mapping' }
+      ]
+    },
+    { 
+      id: 'form-ipr', 
+      label: 'IPR', 
+      path: '/form-ipr', 
+      icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' 
+    },
+    { 
+      id: 'premi', 
+      label: 'Data Premi', 
+      path: '/bordero-premi', 
+      icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' 
+    },
+    { 
+      id: 'klaim', 
+      label: 'Data Klaim', 
+      path: '/bordero-klaim', 
+      icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' 
+    },
+  ];
 
-  const otherItems = [
-    { id: 'guide', label: 'User Guide', path: '/guide', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
-    { id: 'help', label: 'Help Center', path: '/help', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z' },
-  ];
+  const otherItems = [
+    { id: 'guide', label: 'User Guide', path: '/guide', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
+    { id: 'help', label: 'Help Center', path: '/help', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z' },
+  ];
 
-  return (
-    <aside className="w-[260px] bg-[#F8F9FA] border-r border-slate-200/60 h-screen sticky top-0 flex flex-col font-sans">
-      {/* Logo Area */}
-      <div className="h-20 flex items-center px-6">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xs">ETL</span>
-          </div>
-          <span className="font-bold text-slate-900 text-lg tracking-tight">Indore</span>
-        </div>
-      </div>
+  return (
+    <aside className="w-[260px] bg-[#F8F9FA] border-r border-slate-200/60 h-screen sticky top-0 flex flex-col font-sans">
+      {/* Logo Area */}
+      <div className="h-20 flex items-center px-6">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-xs">ETL</span>
+          </div>
+          <span className="font-bold text-slate-900 text-lg tracking-tight">Indore</span>
+        </div>
+      </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-8 custom-scrollbar">
-        
-        {/* Menu Utama */}
-        <div>
-          <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Menu</p>
-          <nav className="space-y-1">
-            {menuItems.map((item) => {
-              // Cek apakah menu ini punya sub-menu
-              const hasSubItems = item.subItems && item.subItems.length > 0;
-              
-              // Cek status aktif. Kalau punya sub-menu, dia aktif jika salah satu sub-menunya aktif.
-              const isActive = hasSubItems 
-                ? item.subItems.some(sub => location.pathname.startsWith(sub.path))
-                : location.pathname.startsWith(item.path);
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-8 custom-scrollbar">
+        
+        {/* Menu Utama */}
+        <div>
+          <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Menu</p>
+          <nav className="space-y-1">
+            {menuItems.map((item) => {
+              // Cek apakah menu ini punya sub-menu
+              const hasSubItems = item.subItems && item.subItems.length > 0;
+              
+              // Cek status aktif. Kalau punya sub-menu, dia aktif jika salah satu sub-menunya aktif.
+              const isActive = hasSubItems 
+                ? item.subItems.some(sub => location.pathname.startsWith(sub.path))
+                : location.pathname.startsWith(item.path);
 
-              // Tentukan apakah dropdown harus terbuka
-              const isOpen = openDropdown === item.id || (openDropdown === '' && isActive);
+              // Tentukan apakah dropdown harus terbuka
+              const isOpen = openDropdown === item.id || (openDropdown === '' && isActive);
 
-              const handleToggle = (e) => {
-                e.preventDefault();
-                setOpenDropdown(isOpen ? '' : item.id);
-              };
+              const handleToggle = (e) => {
+                e.preventDefault();
+                setOpenDropdown(isOpen ? '' : item.id);
+              };
 
-              return (
-                <div key={item.id} className="space-y-1">
-                  {hasSubItems ? (
-                    // Render Tombol Dropdown
-                    <button
-                      onClick={handleToggle}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
-                        </svg>
-                        {item.label}
-                      </div>
-                      <svg className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  ) : (
-                    // Render Menu Biasa (Tanpa Dropdown)
-                    <Link 
-                      to={item.path}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                      }`}
-                    >
-                      <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
-                      </svg>
-                      {item.label}
-                    </Link>
-                  )}
+              return (
+                <div key={item.id} className="space-y-1">
+                  {hasSubItems ? (
+                    // Render Tombol Dropdown
+                    <button
+                      onClick={handleToggle}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
+                        </svg>
+                        {item.label}
+                      </div>
+                      <svg className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  ) : (
+                    // Render Menu Biasa (Tanpa Dropdown)
+                    <Link 
+                      to={item.path}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
+                      </svg>
+                      {item.label}
+                    </Link>
+                  )}
 
-                  {/* Render Sub-Menu jika dropdown terbuka */}
-                  {hasSubItems && isOpen && (
-                    <div className="pl-11 pr-3 py-1 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                      {item.subItems.map((sub) => {
-                        const isSubActive = location.pathname.startsWith(sub.path);
-                        return (
-                          <Link
-                            key={sub.id}
-                            to={sub.path}
-                            className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              isSubActive ? 'text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                            }`}
-                          >
-                            {sub.label}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
-        </div>
+                  {/* Render Sub-Menu jika dropdown terbuka */}
+                  {hasSubItems && isOpen && (
+                    <div className="pl-11 pr-3 py-1 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                      {item.subItems.map((sub) => {
+                        const isSubActive = location.pathname.startsWith(sub.path);
+                        return (
+                          <Link
+                            key={sub.id}
+                            to={sub.path}
+                            className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              isSubActive ? 'text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                            }`}
+                          >
+                            {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
 
-        {/* Menu Others */}
-        <div>
-          <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Others</p>
-          <nav className="space-y-1">
-            {otherItems.map((link) => (
-              <Link key={link.id} to={link.path} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all">
-                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={link.icon} />
-                </svg>
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </div>
-    </aside>
-  );
+        {/* Menu Others */}
+        <div>
+          <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Others</p>
+          <nav className="space-y-1">
+            {otherItems.map((link) => (
+              <Link key={link.id} to={link.path} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all">
+                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={link.icon} />
+                </svg>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </aside>
+  );
 }
