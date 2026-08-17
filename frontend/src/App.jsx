@@ -1,9 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
+// Import Layout & Provider Context
 import MainLayout from './components/layout/MainLayout';
 import { SidebarProvider } from './components/context/SidebarContext';
 
+// Import Pages
 import UploadBordero from './pages/UploadBordero';
 import FormFire from './pages/FormFire';
 import FormKredit from './pages/FormKredit';

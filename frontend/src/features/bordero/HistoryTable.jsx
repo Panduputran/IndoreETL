@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../../components/ui/Table';
-import { ValidationBadge } from '../preview';
+
+// Komponen Status Badge Lokal (Menggantikan ValidationBadge yang dihapus)
+function StatusBadge({ status }) {
+    const isSuccess = status === 'success' || status === 'valid' || status === 'BOUND';
+    
+    return (
+        <span className={`inline-flex items-center justify-center font-bold px-2.5 py-0.5 rounded-md text-[10px] uppercase tracking-wide border ${
+            isSuccess 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+            {isSuccess ? 'VALID' : 'WARNING'}
+        </span>
+    );
+}
 
 // 3 Data Dummy Bawaan Awal
 const INITIAL_DUMMY_DATA = [
@@ -232,9 +246,7 @@ export default function HistoryTable({ data, setHistoryData }) {
 
                                         {/* Status */}
                                         <TableCell className="p-3.5 text-center">
-                                            <ValidationBadge 
-                                                status={item.status === 'success' ? 'valid' : 'warning'} 
-                                            />
+                                            <StatusBadge status={item.status} />
                                         </TableCell>
 
                                         {/* Message Log */}
@@ -254,7 +266,7 @@ export default function HistoryTable({ data, setHistoryData }) {
                                             {item.completedAt || "-"}
                                         </TableCell>
 
-                                        {/* BARIS TOMBOL AKSI (TANPA TOMBOL EDIT LAGI) */}
+                                        {/* BARIS TOMBOL AKSI */}
                                         <TableCell className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex items-center justify-center gap-1">
                                                 
