@@ -136,9 +136,7 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
 
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS "{table_name}" (
-        id_record SERIAL PRIMARY KEY,
-        {", ".join(column_definitions)},
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        {", ".join(column_definitions)}
     );
     """
 
@@ -148,5 +146,5 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     return {
         "status": "success",
         "table_name": table_name,
-        "message": f"Tabel '{table_name}' berhasil dibuat di PostgreSQL dengan skema aman!"
+        "message": f"Tabel '{table_name}' berhasil dibuat murni murni dari kolom Excel!"
     }

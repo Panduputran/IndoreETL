@@ -1,16 +1,10 @@
 import React from 'react';
-import { Eye, Check } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Files } from 'lucide-react';
 
 export default function SheetSelector({ 
-  sheets = [
-    { name: 'Premi QS', rows: 850 },
-    { name: 'Claim QS', rows: 320 },
-    { name: 'Subro', rows: 140 }
-  ], 
-  selectedSheets = [], 
+  sheets = [], 
   activePreviewSheet,
-  onPreviewSelect,
-  onSelect 
+  onPreviewSelect
 }) {
   if (!sheets || sheets.length === 0) {
     return (
@@ -20,107 +14,80 @@ export default function SheetSelector({
     );
   }
 
-  const isAllSelected = sheets.length > 0 && selectedSheets.length === sheets.length;
-
-  const handleToggleSheet = (sheetName) => {
-    if (selectedSheets.includes(sheetName)) {
-      onSelect(selectedSheets.filter((name) => name !== sheetName));
-    } else {
-      onSelect([...selectedSheets, sheetName]);
-    }
-  };
-
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      onSelect([]);
-    } else {
-      onSelect(sheets.map((s) => s.name));
-    }
-  };
-
   return (
     <div className="space-y-3 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 text-xs">
-      {/* Header */}
+      {/* Header Utama Minimalis */}
       <div className="flex items-center justify-between">
-        <div>
-          <label className="text-xs font-bold text-slate-800 block">Pilih Sheet Yang Akan Diproses ETL</label>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            Gunakan tombol preview untuk melihat isi data sebelum mencentang sheet yang akan disimpan.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSelectAll}
-          className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/80 border border-blue-200/60 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0"
-        >
-          {isAllSelected ? '✕ Batal Pilih Semua' : '✓ Pilih Semua Sheet'}
-        </button>
+        <label className="text-xs font-bold text-slate-800 block">Inspeksi Data Per-Sheet</label>
+        
+        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/80 px-2.5 py-1 rounded-lg shrink-0">
+          {sheets.length} Skema Target
+        </span>
       </div>
 
-      {/* Grid Cards */}
+      {/* Grid Cards Sheet */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {sheets.map((sheet, index) => {
-          const isSelected = selectedSheets.includes(sheet.name);
           const isActivePreview = activePreviewSheet === sheet.name;
+          const hasError = sheet.invalidCount && sheet.invalidCount > 0;
 
           return (
             <div
               key={index}
-              className={`relative flex flex-col justify-between p-3.5 text-left border rounded-xl transition-all duration-200 space-y-3 ${
+              onClick={() => onPreviewSelect && onPreviewSelect(sheet.name)}
+              className={`relative flex flex-col justify-between p-3.5 text-left border rounded-xl transition-all duration-200 space-y-3 cursor-pointer ${
                 isActivePreview
                   ? 'bg-white border-blue-500 ring-2 ring-blue-500/20 shadow-sm'
-                  : isSelected
-                  ? 'bg-white border-slate-300'
-                  : 'bg-slate-100/50 border-slate-200'
+                  : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
               }`}
             >
-              {/* Top Bar Card: Checkbox + Title */}
+              {/* Top Bar Card */}
               <div className="flex items-start justify-between gap-2">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`font-bold text-xs ${isActivePreview ? 'text-blue-700' : 'text-slate-800'}`}>
-                      {sheet.name}
+                <div className="space-y-1 min-w-0">
+                  {/* Judul Sheet tanpa Badge Redundan */}
+                  <span className={`font-bold text-xs truncate block ${isActivePreview ? 'text-blue-700' : 'text-slate-800'}`}>
+                    {sheet.name}
+                  </span>
+
+                  {/* Info Baris & Jumlah File */}
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <span className="font-bold text-slate-600">
+                      {sheet.rows ? `${sheet.rows} Baris` : 'Siap diproses'}
                     </span>
-                    {isActivePreview && (
-                      <span className="px-1.5 py-0.2 text-[8px] uppercase font-bold bg-blue-100 text-blue-700 rounded">
-                        Sedang Dilihat
+                    
+                    {sheet.filesCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded">
+                        <Files className="w-2.5 h-2.5" />
+                        <span>{sheet.filesCount} File</span>
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    {sheet.rows ? `${sheet.rows} Baris Data` : 'Siap diproses'}
-                  </p>
                 </div>
 
-                {/* Checkbox Pilihan ETL */}
-                <button
-                  type="button"
-                  onClick={() => handleToggleSheet(sheet.name)}
-                  className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all cursor-pointer shrink-0 ${
-                    isSelected
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                      : 'border-slate-300 bg-white hover:border-slate-400'
-                  }`}
-                  title={isSelected ? 'Batalkan pilihan sheet ini' : 'Pilih sheet ini untuk diproses ETL'}
-                >
-                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                </button>
+                {/* Status Validasi */}
+                {hasError ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-600 border border-rose-200/80 shrink-0">
+                    <AlertTriangle className="w-2.5 h-2.5" />
+                    <span>{sheet.invalidCount} Error</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/80 shrink-0">
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    <span>Valid</span>
+                  </span>
+                )}
               </div>
 
-              {/* Bottom Bar Card: Tombol Preview Khusus */}
-              <button
-                type="button"
-                onClick={() => onPreviewSelect && onPreviewSelect(sheet.name)}
-                className={`w-full py-1.5 px-2.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              {/* Bottom Action Button */}
+              <div
+                className={`w-full py-1.5 px-2.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
                   isActivePreview
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 group-hover:bg-slate-200/80 text-slate-600'
                 }`}
               >
-                <Eye className="w-3.5 h-3.5" />
                 <span>{isActivePreview ? 'Sedang Dipreview' : 'Lihat Preview'}</span>
-              </button>
+              </div>
 
             </div>
           );

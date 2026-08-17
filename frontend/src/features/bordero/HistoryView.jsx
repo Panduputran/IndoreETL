@@ -3,34 +3,43 @@ import HistoryTable from './HistoryTable';
 
 export default function HistoryView() {
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[500px] space-y-4">
-            {/* Filter Section */}
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-4">
+            
+            {/* 1. Filter Section (Sudah punya card sendiri) */}
             <AdvancedFilter />
             
-            {/* Table Section */}
-            <HistoryTable />
-            
-            {/* Pagination & Summary Footer */}
-            <div className="pt-2 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 gap-3 border-t border-slate-100">
-                <span className="font-medium">
-                  Menampilkan <strong className="text-slate-700">1 - 3</strong> dari <strong className="text-slate-700">3</strong> data
-                </span>
+            {/* 2. Table Section & Pagination Wrapper */}
+            <div className="bg-white p-5 rounded-2xl shadow-2xs border border-slate-200/80 space-y-4 min-h-[400px]">
                 
-                <div className="flex items-center gap-1.5">
-                    <button 
-                      className="px-3 py-1.5 border border-slate-200 rounded-lg font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-slate-600" 
-                      disabled
-                    >
-                      ← Previous
-                    </button>
-                    <button 
-                      className="px-3 py-1.5 border border-slate-200 rounded-lg font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-slate-600" 
-                      disabled
-                    >
-                      Next →
-                    </button>
+                {/* History Table */}
+                <HistoryTable />
+                
+                {/* Pagination & Summary Footer */}
+                <div className="pt-2 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 gap-3 border-t border-slate-100">
+                    <span className="font-medium text-[11px]">
+                        Menampilkan <strong className="text-slate-800 font-bold">1 - 3</strong> dari <strong className="text-slate-800 font-bold">3</strong> data
+                    </span>
+                    
+                    <div className="flex items-center gap-1.5">
+                        <button 
+                            type="button"
+                            className="px-3 py-1.5 border border-slate-200 rounded-xl font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-slate-600 text-[11px] cursor-pointer shadow-2xs" 
+                            disabled
+                        >
+                            &larr; Previous
+                        </button>
+                        <button 
+                            type="button"
+                            className="px-3 py-1.5 border border-slate-200 rounded-xl font-semibold hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-slate-600 text-[11px] cursor-pointer shadow-2xs" 
+                            disabled
+                        >
+                            Next &rarr;
+                        </button>
+                    </div>
                 </div>
+
             </div>
+
         </div>
     );
 }

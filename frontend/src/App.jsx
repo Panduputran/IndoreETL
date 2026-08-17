@@ -1,41 +1,32 @@
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Import komponen layout
 import MainLayout from './components/layout/MainLayout';
+import { SidebarProvider } from './components/context/SidebarContext';
 
-// Import halaman (pages)
 import UploadBordero from './pages/UploadBordero';
 import FormFire from './pages/FormFire';
 import FormKredit from './pages/FormKredit';
-import Dashboard from './pages/Dashboard';
 import MasterMapping from './pages/MasterMapping';
-
-// 1. IMPORT KOMPONEN HAK CIPTA / IPR KAMU DI SINI (sesuaikan nama file & path-nya)
-import FormIpr from './pages/FormIpr'; 
+import FormIpr from './pages/FormIpr';
+import Dashboard from './pages/Dashboard';
 
 export default function App() {
   return (
     <BrowserRouter>
-      <MainLayout>
+      <SidebarProvider>
         <Routes>
-          {/* Redirect dari root / langsung ke /upload */}
-          <Route path="/" element={<Navigate to="/upload" replace />} />
-          
-          {/* Halaman Utama ETL */}
-          <Route path="/upload" element={<UploadBordero />} />
-          
-          {/* UPDATE: Sesuaikan path ini dengan URL to="..." di MainLayout lu */}
-          <Route path="/form-fire" element={<FormFire />} />
-          <Route path="/form-kredit" element={<FormKredit />} />
-          <Route path="/master/mapping" element={<MasterMapping />} />
-
-          {/* 2. TAMBAHKAN ROUTE IPR DI SINI */}
-          <Route path="/form-ipr" element={<FormIpr />} />
-
-          {/* Halaman Dashboard (Masih Placeholder) */}
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Navigate to="/upload" replace />} />
+            <Route path="/upload" element={<UploadBordero />} />
+            <Route path="/form-fire" element={<FormFire />} />
+            <Route path="/form-kredit" element={<FormKredit />} />
+            <Route path="/master/mapping" element={<MasterMapping />} />
+            <Route path="/form-ipr" element={<FormIpr />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Route>
         </Routes>
-      </MainLayout>
+      </SidebarProvider>
     </BrowserRouter>
   );
 }

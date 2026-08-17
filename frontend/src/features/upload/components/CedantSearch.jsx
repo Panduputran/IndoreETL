@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 // Import CEDANTS dari global constants
 import { CEDANTS } from '../../../constants/data';
 
@@ -25,14 +25,14 @@ export default function CedantSearch({ selected, onSelect }) {
   }, []);
 
   const handleSelect = (cedant) => {
-    onSelect(cedant);
-    setQuery(cedant.name); // Isi input dengan nama yang dipilih
+    onSelect(cedant); // Mengirim objek lengkap { code, name } ke parent component
+    setQuery('');     // Reset query karena tampilan sudah di-handle oleh `selected.name`
     setIsOpen(false);
   };
 
   const handleClear = (e) => {
     e.stopPropagation();
-    onSelect(null); // Triggers parent reset
+    onSelect(null); // Triggers parent reset (menghapus objek selected)
     setQuery('');
     setIsOpen(true); // Buka dropdown lagi untuk milih ulang
   };
@@ -40,7 +40,7 @@ export default function CedantSearch({ selected, onSelect }) {
   return (
     <div className="space-y-1.5 relative text-xs" ref={wrapperRef}>
       <label className="block font-bold text-slate-700">
-        Nama Cedant Perusahaan <span className="text-red-500">*</span>
+        Nama / Kode Cedant Perusahaan <span className="text-red-500">*</span>
       </label>
 
       {/* Input Field Clean SaaS Style */}
@@ -49,15 +49,22 @@ export default function CedantSearch({ selected, onSelect }) {
           isOpen ? 'border-blue-500 ring-4 ring-blue-500/10 bg-white' : 'border-slate-200'
         }`}
       >
-        <div className="pl-3.5 text-slate-400">
+        <div className="pl-3.5 text-slate-400 shrink-0">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
         
+        {/* Indikator Badge Kode saat Cedant sudah dipilih */}
+        {selected?.code && !query && (
+          <span className="ml-2 font-mono text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded shrink-0">
+            {selected.code}
+          </span>
+        )}
+
         <input
           type="text"
-          className="w-full py-2.5 px-3 bg-transparent text-xs text-slate-800 font-semibold placeholder-slate-400 focus:outline-none"
+          className="w-full py-2.5 px-2.5 bg-transparent text-xs text-slate-800 font-semibold placeholder-slate-400 focus:outline-none"
           placeholder="Cari kode atau nama cedant..."
           value={selected ? selected.name : query}
           onChange={(e) => {
@@ -74,7 +81,7 @@ export default function CedantSearch({ selected, onSelect }) {
           <button
             type="button"
             onClick={handleClear}
-            className="pr-3 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+            className="pr-3 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer shrink-0"
             title="Clear"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,9 +128,6 @@ export default function CedantSearch({ selected, onSelect }) {
         </div>
       )}
 
-      <p className="text-[10px] text-slate-400 leading-relaxed">
-        * Cedant Code & Treaty Code akan dicocokkan otomatis oleh backend dari database master.
-      </p>
     </div>
   );
 }

@@ -40,6 +40,7 @@ MASTER_COLUMNS_PREMI = {
     ]
 }
 
+
 MASTER_COLUMNS_CLAIM = {
     "buanaindependent": [
         "no", "claim_reff_no", "policy_number", "insured_name", "cob_type_of_cover",
@@ -50,11 +51,14 @@ MASTER_COLUMNS_CLAIM = {
         "spreading_of_claim_others", "paid_claims_treaty_share", "outstanding_claims_treaty_share",
         "note", "period"
     ],
-    # --- ASKRIDA KLAIM (Bila nanti dikembangkan) ---
-    "askrida": [
-        "no", "cob", "nama_bank_tertanggung", "insured_name", "tanggal_lahir",
-        "policy_number", "uw_year", "tanggal_akad", "period_of_insurance_start", 
-        "period_of_insurance_end", "currency", "reff_of_no_bordereaux", "period"
+    "tripakarta": [
+        "no", "register_no", "policy_number", "insured_name", "cob", 
+        "uw_year", "period_of_insurance_start", "period_of_insurance_end", 
+        "occupation_code", "occupation", "dol", "source_direct_coins_fac", 
+        "curr", "claim_100", "cedants_share_percent", "cedants_share_in_amount", 
+        "spreading_of_claim_or", "spreading_of_claim_qs", "spreading_of_claim_spl", 
+        "spreading_of_claim_others", "claim_qs_marsh_re_share", "claim_spl_marsh_re_share", 
+        "os_claims_100", "os_claims_marsh_re_share", "note", "period"
     ]
 }
 
