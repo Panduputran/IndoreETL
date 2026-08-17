@@ -11,7 +11,7 @@ Enterprise-Grade Full-Stack Data Pipeline, Cleansing Engine & Analytics Portal
 ![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)
 ![Pandas](https://img.shields.io/badge/Pandas-150458?style=for-the-badge&logo=pandas&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![License](https://img.shields.io/badge/License-Starcore-red?style=for-the-badge)
+![License](https://img.shields.io/badge/License-None-red?style=for-the-badge)
 
 </div>
 
