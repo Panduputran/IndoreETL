@@ -47,3 +47,28 @@ Rangkuman pembaruan sistem backend terkait pemrosesan ETL data Cedant (Askrida, 
 | `/api/v1/etl/create-table` | `POST` | Mendukung DDL dinamis untuk skema tabel klaim baru (`claim_askrida_kredit`, `claim_aca_fire`). |
 | `/api/v1/etl/process` | `POST` | Menyimpan data langsung ke tabel target dinamis sesuai COB/sheet. |
 | `/api/v1/etl/process-batch` | `POST` | Menjalankan multi-sheet/multi-file ETL berurutan dengan target tabel masing-masing. |
+
+
+### Updates & Fixes (ACA ETL & Helpers)
+
+#### 1. `app/utils/helpers.py`
+- **Fix Multi-Index Header:** Mencegah penggabungan baris header dengan baris data pertama (mengatasi bug kolom `reinsured_pt_asuransi...`).
+- **Smart Dynamic Header:** Menambahkan deteksi otomatis baris header untuk single-header vs multi-level header.
+- **Universal Keyword Detection:** Memperluas kamus `target_keywords` (bilingual ID/EN) agar akurat mendeteksi baris header di berbagai baris (baris 1, 8, dst.) untuk semua cedant.
+
+#### 2. `app/services/cedants/aca.py`
+- **Feature `process_claim`:**
+  - Implementasi penuh ekstraksi data klaim ACA (Non Marine & Marine).
+  - Mapping alias kolom (`claimno` -> `claim_no`, `gross_claim` -> `claim_amount_100`, dll.).
+  - Fix kolom persentase `ACA'S SHARE (%)` dan `REINSURER SHARE (%)` agar tidak `null`.
+  - Sanitasi ID string (hapus `.0`), validasi tanggal, dan filter baris total/rekap.
+- **Fix & Refactor `process_premi`:**
+  - Fix issue `total_rows_inserted: 0` akibat mismatch mapping `policyno`.
+  - Menambahkan alias untuk kolom `endorsement` (`endorsement_no`, `no_endorsement`, dll.).
+  - Sinkronisasi master output dengan `MASTER_COLUMNS_PREMI["aca"]`.
+
+#### 3. Database Schema (DDL & JSON Config) di test_db
+- Pembuatan struktur tabel dan JSON Schema untuk `claim_aca_fire`.
+- Pembuatan struktur tabel dan JSON Schema untuk `premi_aca_fire`.
+
+notes: sudah ada backups
