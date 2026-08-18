@@ -5,8 +5,7 @@ from pydantic import BaseModel
 from app.services.inspector_service import (
     inspect_and_save_file, 
     check_target_table_in_db, 
-    execute_create_table,
-    get_target_table_name  # <- Import helper penentu nama tabel
+    execute_create_table
 )
 from app.services.etl_factory import run_etl_service
 from app.utils.helpers import get_temp_file_path, clean_dict_for_json
@@ -37,7 +36,6 @@ class ProcessETLRequest(BaseModel):
     target_sheet: str
     kuartal: str
     tahun: str
-    custom_table_name: str | None = None  # <- Tambahkan opsi custom table di sini
     override_cob: str | None = None
     deduplicate: bool = False
 
@@ -67,8 +65,7 @@ async def check_db_endpoint(payload: CheckDBRequest):
             file_id=payload.file_id,
             tipe_proses=payload.tipe_proses,
             cedant=payload.cedant,
-            target_sheet=payload.target_sheet,
-            custom_table_name=payload.custom_table_name  # <- Teruskan custom_table_name
+            target_sheet=payload.target_sheet
         )
         return {"status": "success", "data": result}
     except Exception as e:
@@ -104,14 +101,8 @@ async def process_etl(payload: ProcessETLRequest):
         if payload.deduplicate:
             df_clean = df_clean.drop_duplicates(keep='first')
 
-        # Penentuan nama tabel dinamis & universal (tanpa hardcode _fire)
-        target_table = get_target_table_name(
-            tipe_proses=payload.tipe_proses,
-            cedant=payload.cedant,
-            selected_sheet=payload.target_sheet,
-            custom_table_name=payload.custom_table_name
-        )
-
+        # Insert ke DB
+        target_table = f"{payload.tipe_proses.lower()}_{payload.cedant.lower()}_fire"
         insert_data_to_db(df_clean, target_table)
 
         preview = clean_dict_for_json(df_clean.head(1).to_dict(orient="records"))
@@ -147,17 +138,7 @@ async def process_etl_batch(payloads: List[ProcessETLRequest]):
                 override_cob=item.override_cob
             )
 
-            if item.deduplicate:
-                df_clean = df_clean.drop_duplicates(keep='first')
-
-            # Penentuan nama tabel dinamis untuk batch
-            target_table = get_target_table_name(
-                tipe_proses=item.tipe_proses,
-                cedant=item.cedant,
-                selected_sheet=item.target_sheet,
-                custom_table_name=item.custom_table_name
-            )
-
+            target_table = f"{item.tipe_proses.lower()}_{item.cedant.lower()}_fire"
             insert_data_to_db(df_clean, target_table)
 
             results.append({
@@ -165,7 +146,6 @@ async def process_etl_batch(payloads: List[ProcessETLRequest]):
                 "status": "success",
                 "file_id": item.file_id,
                 "target_sheet": item.target_sheet,
-                "target_table": target_table,
                 "rows_inserted": len(df_clean)
             })
         except Exception as e:

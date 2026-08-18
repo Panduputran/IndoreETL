@@ -31,45 +31,23 @@ def inspect_and_save_file(file_bytes: bytes, filename: str, tipe_proses: str, ce
     }
 
 
-def resolve_cob_from_sheet(sheet_name: str) -> str:
-    """
-    Mencari COB baku secara universal dari nama sheet cedant mana pun.
-    Mendukung matching kata kunci tanpa hardcode nama cedant.
-    """
-    clean_name = re.sub(r'[^a-zA-Z0-9\s]', ' ', str(sheet_name or '')).lower().strip()
-    words = set(clean_name.split())
-    
-    # 1. Cek exact match di dictionary config
-    if clean_name in SHEET_TO_TABLE_MAPPING:
-        return SHEET_TO_TABLE_MAPPING[clean_name]
-    
-    # 2. Cek kecocokan kata kunci COB
-    for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
-        if ' ' in keyword and keyword in clean_name:
-            return cob_target
-        elif keyword in words:
-            return cob_target
-            
-    # 3. Handle sheet Quota Share (QS) umum
-    if "qs" in words and any(k in words for k in ["klaim", "claim", "premi", "premium"]):
-        return "kredit"
-        
-    return to_snake_case(sheet_name)
+def normalize_sheet_mapping(sheet_name: str) -> str:
+    name = sheet_name.lower()
+    name = re.sub(r'[\-_]+', ' ', name)
+    name = re.sub(r'\s+', ' ', name)
+    return name.strip()
 
 
 def get_target_table_name(tipe_proses: str, cedant: str, selected_sheet: str, custom_table_name: str = None) -> str:
-    # 1. Prioritas utama: Custom table name dari user
     if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() != "string":
         return custom_table_name.strip().lower()
 
-    tipe = tipe_proses.lower().strip()
-    cedant_key = cedant.lower().strip()
-    cob_suffix = resolve_cob_from_sheet(selected_sheet)
-
-    return f"{tipe}_{cedant_key}_{cob_suffix}"
+    sheet_clean = normalize_sheet_mapping(selected_sheet)
+    cob_suffix = SHEET_TO_TABLE_MAPPING.get(sheet_clean, to_snake_case(selected_sheet))
+    return f"{tipe_proses.lower()}_{cedant.lower()}_{cob_suffix}"
 
 
-def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target_sheet: str, custom_table_name: str = None) -> dict:
+def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target_sheet: str) -> dict:
     file_path = get_temp_file_path(file_id)
     cedant_key = cedant.lower()
 
@@ -77,8 +55,7 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
     sheets_map = {sheet.lower().strip(): sheet for sheet in excel_file.sheet_names}
     actual_sheet = sheets_map.get(target_sheet.lower().strip(), target_sheet)
 
-    # Oper custom_table_name ke helper
-    table_name = get_target_table_name(tipe_proses, cedant, actual_sheet, custom_table_name)
+    table_name = get_target_table_name(tipe_proses, cedant, actual_sheet)
 
     if tipe_proses.lower() == "claim":
         master_cols = MASTER_COLUMNS_CLAIM.get(cedant_key, [])
@@ -126,7 +103,7 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
                 elif 'datetime' in dtype_str:
                     suggested_type = "TIMESTAMP"
 
-            if col in ["insured_name", "location", "occupation", "cause_of_loss", "note"]:
+            if col in ["insured_name", "location", "occupation"]:
                 suggested_type = "TEXT"
 
             schema_suggestions.append({"column_name": col, "suggested_sql_type": suggested_type})

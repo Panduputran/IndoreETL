@@ -3,16 +3,10 @@ import numpy as np
 import pandas as pd
 from app.services.cedants.base import BaseCedantETL
 from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM
-from app.utils.helpers import read_excel_dynamic_header, validate_dates
-
-
-def match_pattern(patterns: list, text: str) -> bool:
-    """Helper untuk mencocokkan kata menggunakan regex berbatas kata (word boundary)."""
-    return any(re.search(rf"\b{p}\b", text, re.IGNORECASE) for p in patterns)
-
+from app.utils.helpers import validate_dates, safe_parse_single_date
 
 class AskridaETL(BaseCedantETL):
-    """Modul khusus pemrosesan data Askrida (SOA Premi Multi-Sheet & Klaim Kredit)"""
+    """Modul khusus pemrosesan data Askrida (SOA Credit Multi-Sheet)"""
 
     @staticmethod
     def process_premi(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
@@ -165,136 +159,6 @@ class AskridaETL(BaseCedantETL):
 
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
-        excel_file = pd.ExcelFile(file_path)
-        all_sheets = excel_file.sheet_names
-
-        # Tentukan sheet klaim yang akan diproses
-        if target_sheet and target_sheet.lower().strip() != "all":
-            matched_sheets = [s for s in all_sheets if s.lower().strip() == target_sheet.lower().strip()]
-        else:
-            matched_sheets = [s for s in all_sheets if 'klaim' in s.lower() or 'claim' in s.lower()]
-
-        if not matched_sheets:
-            matched_sheets = all_sheets[:1]
-
-        list_df = []
-        for sheet_name in matched_sheets:
-            df_raw = read_excel_dynamic_header(file_path, sheet_name)
-            if df_raw.empty:
-                continue
-
-            df_clean = df_raw.copy()
-            df_clean = validate_dates(df_clean)
-            df_clean = df_clean.loc[:, ~df_clean.columns.astype(str).str.contains('^Unnamed', case=False)]
-
-            # =========================================================================
-            # MAPPING KOLOM DINAMIS DENGAN WORD BOUNDARY & PRIORITAS HIERARKI
-            # =========================================================================
-            rename_map = {}
-            for col in df_clean.columns:
-                col_u = str(col).upper().strip()
-
-                # 1. Pengecekan Porsi Reasuradur (Prioritas Tertinggi)
-                if any(k in col_u for k in ["REINDO", "RIU"]):
-                    if match_pattern(["CLAIM", "KLAIM", "PAID", "SHARE"], col_u):
-                        rename_map[col] = "paid_claims_indore_share"
-                elif any(k in col_u for k in ["100%", "100PERCENT", "100", "REINSURER"]):
-                    if match_pattern(["CLAIM", "KLAIM", "PAID", "SHARE"], col_u):
-                        rename_map[col] = "paid_claims_reins_share"
-
-                # 2. Pengecekan Tanggal Spesifik (Mencegah salah tangkap kata DATE/START/END)
-                elif match_pattern(["PERIOD START", "PERIOD ST", "PERIODE ST", "INCEPT", "AKAD"], col_u):
-                    rename_map[col] = "period_of_insurance_start"
-                elif match_pattern(["PERIOD END", "PERIOD EN", "PERIODE EN", "EXPIRY"], col_u):
-                    rename_map[col] = "period_of_insurance_end"
-                elif match_pattern(["DATE OF LOSS", "DOL", "TANGGAL KLAIM", "TANGGAL KEJADIAN"], col_u):
-                    rename_map[col] = "date_of_loss"
-
-                # 3. Pengecekan Kolom Identitas & Data Polis
-                elif col_u in ["NO", "NR", "NO.", "NR."]:
-                    rename_map[col] = "no"
-                elif match_pattern(["NO KLAIM", "NO_KLAIM", "CLAIM NO", "CLAIM_NO", "CLAIM REFF", "REFF NUMBER"], col_u):
-                    rename_map[col] = "claim_reff_number"
-                elif match_pattern(["POLICY", "POLIS", "NO POLIS", "POLICY NUMBER", "POLICY_NUMBER"], col_u):
-                    rename_map[col] = "policy_number"
-                elif match_pattern(["BORDEREAUX", "BORDERO", "NO BORD", "REFF OF NO BORDEREAUX"], col_u):
-                    rename_map[col] = "reff_of_no_bordereaux"
-                elif match_pattern(["BANK", "THE INSURED", "THE_INSURED", "CEDANT", "NAMA BANK"], col_u):
-                    rename_map[col] = "nama_bank_tertanggung"
-                elif match_pattern(["NAME OF INSURED", "NAME_OF_INSURED", "TERTANGGUNG", "DEBITUR", "INSURED NAME"], col_u):
-                    rename_map[col] = "insured_name"
-                elif match_pattern(["PERTANGGUNGAN", "INSURED AMOUNT", "TSI", "NILAI PERTANGGUNGAN"], col_u):
-                    rename_map[col] = "insured_amount"
-                elif match_pattern(["BULAN", "WAKTU", "TENOR", "MASA", "WAKTU PERTANGGUNGAN"], col_u):
-                    rename_map[col] = "waktu_pertanggungan_bulan"
-                elif match_pattern(["UW", "UY", "TAHUN UW", "UW YEAR"], col_u):
-                    rename_map[col] = "uw_year"
-                elif match_pattern(["CAUSE", "PENYEBAB", "KETERANGAN KLAIM", "PENYEBAB KLAIM"], col_u):
-                    rename_map[col] = "cause_of_loss"
-                elif match_pattern(["CURR", "MATA UANG", "VALUTA", "CURRENCY"], col_u):
-                    rename_map[col] = "currency"
-                elif match_pattern(["GROSS", "TOTAL INCURRED", "INCURRED", "TOTAL KLAIM", "CLAIM AMOUNT"], col_u):
-                    rename_map[col] = "total_incurred_claim"
-                elif match_pattern(["REMARKS", "NOTE", "CATATAN", "KETERANGAN"], col_u):
-                    rename_map[col] = "note"
-
-            df_clean = df_clean.rename(columns=rename_map)
-
-            # Resolusi kolom jika terjadi penamaan ganda (Pilih kolom dengan data terisi terbanyak)
-            unique_cols = {}
-            for c in df_clean.columns:
-                if c not in unique_cols:
-                    unique_cols[c] = df_clean[c]
-                else:
-                    if df_clean[c].notna().sum() > unique_cols[c].notna().sum():
-                        unique_cols[c] = df_clean[c]
-            df_clean = pd.DataFrame(unique_cols)
-
-            # Handle merged cells vertikal
-            for col_merge in ['reff_of_no_bordereaux', 'uw_year', 'period_of_insurance_start', 'period_of_insurance_end', 'nama_bank_tertanggung']:
-                if col_merge in df_clean.columns:
-                    df_clean[col_merge] = df_clean[col_merge].ffill()
-
-            # Filter data kosong & baris summary total
-            if 'policy_number' in df_clean.columns:
-                df_clean = df_clean.dropna(subset=['policy_number'])
-                p_str = df_clean['policy_number'].astype(str).str.strip().str.upper()
-                df_clean = df_clean[~p_str.str.contains(r'TOTAL|^0$|^NAN$|^NONE$', regex=True, na=False)]
-
-            if not df_clean.empty:
-                list_df.append(df_clean)
-
-        if not list_df:
-            return pd.DataFrame(columns=MASTER_COLUMNS_CLAIM.get("askrida", []))
-
-        df_final = pd.concat(list_df, ignore_index=True)
-
-        # Set Metadata
-        df_final['cob'] = override_cob if override_cob else "CREDIT"
-        df_final['period'] = periode_lengkap
-
-        # Penyelarasan kolom master schema
-        master_cols = MASTER_COLUMNS_CLAIM.get("askrida", [
-            'no', 'cob', 'claim_reff_number', 'policy_number', 'reff_of_no_bordereaux',
-            'nama_bank_tertanggung', 'insured_name', 'insured_amount', 'period_of_insurance_start',
-            'period_of_insurance_end', 'waktu_pertanggungan_bulan', 'uw_year', 'date_of_loss',
-            'cause_of_loss', 'currency', 'total_incurred_claim', 'paid_claims_reins_share',
-            'paid_claims_indore_share', 'note', 'period'
-        ])
-
-        for target_col in master_cols:
-            if target_col not in df_final.columns:
-                df_final[target_col] = np.nan
-
-        # Penataan urutan kolom akhir
-        extra_cols = [c for c in df_final.columns if c not in master_cols]
-        final_column_order = [c for c in master_cols if c not in ['note', 'period']] + extra_cols + ['note', 'period']
-        df_final = df_final[[c for c in final_column_order if c in df_final.columns]]
-
-        # Uppercase pada kolom tipe string/teks
-        string_cols = df_final.select_dtypes(include=['object', 'string']).columns
-        for col in string_cols:
-            df_final[col] = df_final[col].astype(str).str.upper().str.strip()
-            df_final[col] = df_final[col].replace(['NAN', 'NONE', 'NULL', '<NA>', ''], np.nan)
-
-        return df_final
+        # Template klaim Askrida bila nanti dikembangkan
+        master_cols = MASTER_COLUMNS_CLAIM.get("askrida", MASTER_COLUMNS_PREMI["askrida"])
+        return pd.DataFrame(columns=master_cols)

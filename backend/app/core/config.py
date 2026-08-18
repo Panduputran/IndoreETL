@@ -59,6 +59,13 @@ MASTER_COLUMNS_CLAIM = {
         "spreading_of_claim_or", "spreading_of_claim_qs", "spreading_of_claim_spl", 
         "spreading_of_claim_others", "claim_qs_marsh_re_share", "claim_spl_marsh_re_share", 
         "os_claims_100", "os_claims_marsh_re_share", "note", "period"
+    ],
+    "askrida": [
+        "no", "cob", "claim_reff_number", "policy_number", "reff_of_no_bordereaux",
+        "nama_bank_tertanggung", "insured_name", "insured_amount", "period_of_insurance_start",
+        "period_of_insurance_end", "waktu_pertanggungan_bulan", "uw_year", "date_of_loss",
+        "cause_of_loss", "currency", "total_incurred_claim", "paid_claims_reins_share",
+        "paid_claims_indore_share", "note", "period"
     ]
 }
 
@@ -91,6 +98,17 @@ SHEET_TO_TABLE_MAPPING = {
     "credit qs": "credit",
     "qs credit": "credit",
     "credit": "credit",
+
+    # --- ASKRIDA Claim ---
+    "klaim qs tw 1": "credit",
+    "klaim qs tw 2": "credit",
+    "klaim qs tw 3": "credit",
+    "klaim qs tw 4": "credit",
+    "claim qs tw 1": "credit",
+    "claim qs tw 2": "credit",
+    "claim qs tw 3": "credit",
+    "claim qs tw 4": "credit",
+
     
     # --- CLAIM (Satu Tabel Fire) ---
     "claims qs": "fire",
