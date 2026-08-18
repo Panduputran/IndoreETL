@@ -3,3 +3,7 @@
 !.env.example
 
 temp_uploads/
+
+__pycache__/
+*.py[cod]
+*$py.class
