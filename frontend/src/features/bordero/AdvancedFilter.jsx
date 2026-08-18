@@ -1,28 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Search, Building2, ChevronDown, RotateCcw, X } from 'lucide-react';
+import { CEDANTS } from '../../constants/data';
 
 export default function AdvancedFilter({ onFilterChange }) {
   const [filterPeriodType, setFilterPeriodType] = useState('Range');
   const [searchTitle, setSearchTitle] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-
-  // State & Ref Autocomplete Cedant
+  
   const [cedantSearch, setCedantSearch] = useState('');
+  const [selectedCedant, setSelectedCedant] = useState(null);
   const [showCedantDropdown, setShowCedantDropdown] = useState(false);
   const cedantDropdownRef = useRef(null);
 
-  const dummyCedants = [
-    "CDT-001 (Askrida)", 
-    "CDT-002 (Takaful)", 
-    "CDT-003 (Jasindo)", 
-    "CDT-004 (Central Asia)", 
-    "CDT-005 (Tugu Insurance)", 
-    "CDT-006 (Allianz)", 
-    "CDT-007 (Zurich)"
-  ];
-
-  // Handle Click Outside Dropdown
   useEffect(() => {
     function handleClickOutside(event) {
       if (cedantDropdownRef.current && !cedantDropdownRef.current.contains(event.target)) {
@@ -33,13 +23,27 @@ export default function AdvancedFilter({ onFilterChange }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filteredCedants = dummyCedants.filter(cedant => 
-    cedant.toLowerCase().includes(cedantSearch.toLowerCase())
+  const filteredCedants = CEDANTS.filter(c => 
+    c.name.toLowerCase().includes(cedantSearch.toLowerCase()) ||
+    c.code.toLowerCase().includes(cedantSearch.toLowerCase())
   );
 
-  // Reset Semua Filter
+  // Trigger update filter ke parent
+  useEffect(() => {
+    if (onFilterChange) {
+      onFilterChange({
+        cedantCode: selectedCedant?.code || '',
+        searchTitle: searchTitle.trim().toLowerCase(),
+        startDate,
+        endDate,
+        periodType: filterPeriodType
+      });
+    }
+  }, [selectedCedant, searchTitle, startDate, endDate, filterPeriodType, onFilterChange]);
+
   const handleReset = () => {
     setCedantSearch('');
+    setSelectedCedant(null);
     setSearchTitle('');
     setStartDate('');
     setEndDate('');
@@ -47,25 +51,23 @@ export default function AdvancedFilter({ onFilterChange }) {
   };
 
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs mb-5 text-xs">
-      
-      {/* Layout Grid Responsif Presisi */}
+    <div className="bg-white p-4 md:p-5 rounded-3xl border border-slate-200/80 shadow-2xs mb-5 text-xs font-sans">
       <div className="flex flex-col lg:flex-row items-stretch lg:items-end justify-between gap-3">
         
         {/* 1. Cari & Pilih Cedant */}
-        <div className="flex-1 min-w-[200px] relative" ref={cedantDropdownRef}>
+        <div className="flex-1 min-w-[220px] relative" ref={cedantDropdownRef}>
           <label className="block font-bold text-slate-700 mb-1.5 flex items-center gap-1.5 text-[11px]">
             <Building2 className="w-3.5 h-3.5 text-blue-600" />
-            Cari & Pilih Cedant
+            <span>Cari & Pilih Cedant</span>
           </label>
-
           <div className="relative">
             <input 
               type="text" 
-              placeholder="Pilih atau cari Cedant..." 
-              value={cedantSearch}
+              placeholder="Pilih atau cari Cedant..."
+              value={selectedCedant ? selectedCedant.name : cedantSearch}
               onChange={(e) => {
                 setCedantSearch(e.target.value);
+                if (selectedCedant) setSelectedCedant(null);
                 setShowCedantDropdown(true);
               }}
               onFocus={() => setShowCedantDropdown(true)}
@@ -74,36 +76,31 @@ export default function AdvancedFilter({ onFilterChange }) {
             <ChevronDown className={`w-3.5 h-3.5 text-slate-400 absolute right-3 top-3 transition-transform ${showCedantDropdown ? 'rotate-180' : ''}`} />
           </div>
 
-          {/* Pop-up List */}
           {showCedantDropdown && (
-            <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-50 custom-scrollbar">
+            <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-50 custom-scrollbar p-1">
               <li 
-                className="px-3 py-2 text-xs text-blue-600 font-bold hover:bg-blue-50 cursor-pointer"
+                className="px-3 py-2 text-xs text-blue-600 font-bold hover:bg-blue-50 rounded-lg cursor-pointer"
                 onClick={() => {
+                  setSelectedCedant(null);
                   setCedantSearch('');
                   setShowCedantDropdown(false);
                 }}
               >
                 Semua Cedant
               </li>
-              {filteredCedants.length > 0 ? (
-                filteredCedants.map((cedant, index) => (
-                  <li 
-                    key={index}
-                    className="px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600 font-medium cursor-pointer transition-colors"
-                    onClick={() => {
-                      setCedantSearch(cedant);
-                      setShowCedantDropdown(false);
-                    }}
-                  >
-                    {cedant}
-                  </li>
-                ))
-              ) : (
-                <li className="px-3 py-2 text-xs text-slate-400 italic text-center">
-                  Cedant tidak ditemukan
+              {filteredCedants.map((cedant) => (
+                <li 
+                  key={cedant.code}
+                  className="px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg font-medium cursor-pointer transition-colors flex items-center justify-between"
+                  onClick={() => {
+                    setSelectedCedant(cedant);
+                    setShowCedantDropdown(false);
+                  }}
+                >
+                  <span>{cedant.name}</span>
+                  <span className="font-mono text-[10px] text-slate-400 uppercase">[{cedant.code}]</span>
                 </li>
-              )}
+              ))}
             </ul>
           )}
         </div>
@@ -112,12 +109,12 @@ export default function AdvancedFilter({ onFilterChange }) {
         <div className="flex-1 min-w-[180px]">
           <label className="block font-bold text-slate-700 mb-1.5 flex items-center gap-1.5 text-[11px]">
             <Search className="w-3.5 h-3.5 text-blue-600" />
-            Cari Judul / Berkas
+            <span>Cari Judul / Berkas</span>
           </label>
           <div className="relative">
             <input 
               type="text" 
-              placeholder="Judul / nama file..." 
+              placeholder="Judul / nama file..."
               value={searchTitle}
               onChange={(e) => setSearchTitle(e.target.value)}
               className="w-full pl-3 pr-8 h-9 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 bg-slate-50/80 focus:bg-white text-xs font-semibold text-slate-800 transition-all shadow-2xs" 
@@ -134,7 +131,7 @@ export default function AdvancedFilter({ onFilterChange }) {
           </div>
         </div>
 
-        {/* 3. Period Type Toggle */}
+        {/* 3. Period Type */}
         <div className="shrink-0">
           <label className="block font-bold text-slate-700 mb-1.5 text-[11px]">Period Type</label>
           <div className="flex border border-slate-200 rounded-xl overflow-hidden bg-slate-100 p-0.5 h-9 items-center w-[130px]">
@@ -159,7 +156,7 @@ export default function AdvancedFilter({ onFilterChange }) {
           </div>
         </div>
 
-        {/* 4. Date Inputs & Tombol Reset (Aman & Tidak Meluap) */}
+        {/* 4. Date Inputs & Reset */}
         <div className="flex items-center gap-2 shrink-0">
           {filterPeriodType === 'Range' ? (
             <div className="flex items-center gap-1.5">
@@ -186,7 +183,6 @@ export default function AdvancedFilter({ onFilterChange }) {
             />
           )}
 
-          {/* Tombol Reset */}
           <button
             type="button"
             onClick={handleReset}

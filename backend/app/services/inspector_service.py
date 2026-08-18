@@ -1,33 +1,73 @@
 import re
+import io
+import uuid
+import os
+import openpyxl
 import pandas as pd
 from sqlalchemy import inspect, text
 from app.database.connection import engine
-from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM, SHEET_TO_TABLE_MAPPING
+from app.core.config import (
+    MASTER_COLUMNS_PREMI,
+    MASTER_COLUMNS_CLAIM,
+    SHEET_TO_TABLE_MAPPING,
+)
 from app.utils.helpers import (
     to_snake_case,
     detect_period_from_filename,
     get_temp_file_path,
     save_temp_file,
-    read_excel_dynamic_header
+    read_excel_dynamic_header,
 )
 
+TEMP_UPLOAD_DIR = "temp_uploads"
+os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
-def inspect_and_save_file(file_bytes: bytes, filename: str, tipe_proses: str, cedant: str) -> dict:
-    file_id = save_temp_file(file_bytes, filename)
-    file_path = get_temp_file_path(file_id)
 
-    excel_file = pd.ExcelFile(file_path)
-    all_sheets = excel_file.sheet_names
-    period_info = detect_period_from_filename(filename)
+def inspect_and_save_file(
+    file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
+) -> dict:
+    file_id = f"file_{uuid.uuid4().hex}"
+    saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
+
+    # 1. Simpan file fisik ke disk
+    with open(saved_path, "wb") as f:
+        f.write(file_bytes)
+
+    available_sheets = []
+    lower_name = filename.lower()
+
+    # 2. Ekstraksi nama sheet instan via Zip Manifest (< 0.05 detik)
+    if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
+        try:
+            with zipfile.ZipFile(saved_path, "r") as z:
+                # Baca struktur workbook.xml
+                with z.open("xl/workbook.xml") as f_xml:
+                    tree = ET.parse(f_xml)
+                    root = tree.getroot()
+                    # Ambil semua atribut 'name' dari tag <sheet>
+                    for elem in root.iter():
+                        if elem.tag.endswith("sheet"):
+                            sheet_name = elem.attrib.get("name")
+                            if sheet_name:
+                                available_sheets.append(sheet_name)
+        except Exception:
+            # Fallback jika zip manifest gagal
+            import openpyxl
+
+            wb = openpyxl.load_workbook(saved_path, read_only=True, keep_links=False)
+            available_sheets = wb.sheetnames
+            wb.close()
+
+    elif lower_name.endswith(".xls"):
+        excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
+        available_sheets = excel_obj.sheet_names
+    elif lower_name.endswith(".csv"):
+        available_sheets = ["CSV_DATA"]
 
     return {
         "file_id": file_id,
-        "tipe_proses": tipe_proses.lower(),
-        "cedant": cedant.lower(),
-        "detected_period": period_info,
-        "total_sheets": len(all_sheets),
-        "available_sheets": all_sheets,
-        "message": "File berhasil diunggah & dipindai. Gunakan file_id untuk proses selanjutnya."
+        "available_sheets": available_sheets,
+        "saved_path": saved_path,
     }
 
 
@@ -36,40 +76,64 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
     Mencari COB baku secara universal dari nama sheet cedant mana pun.
     Mendukung matching kata kunci tanpa hardcode nama cedant.
     """
-    clean_name = re.sub(r'[^a-zA-Z0-9\s]', ' ', str(sheet_name or '')).lower().strip()
+    clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", str(sheet_name or "")).lower().strip()
     words = set(clean_name.split())
-    
+
     # 1. Cek exact match di dictionary config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
-    
+
     # 2. Cek kecocokan kata kunci COB
     for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
-        if ' ' in keyword and keyword in clean_name:
+        if " " in keyword and keyword in clean_name:
             return cob_target
         elif keyword in words:
             return cob_target
-            
+
     # 3. Handle sheet Quota Share (QS) umum
-    if "qs" in words and any(k in words for k in ["klaim", "claim", "premi", "premium"]):
+    if "qs" in words and any(
+        k in words for k in ["klaim", "claim", "premi", "premium"]
+    ):
         return "kredit"
-        
+
     return to_snake_case(sheet_name)
 
 
-def get_target_table_name(tipe_proses: str, cedant: str, selected_sheet: str, custom_table_name: str = None) -> str:
-    # 1. Prioritas utama: Custom table name dari user
-    if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() != "string":
-        return custom_table_name.strip().lower()
+def get_target_table_name(tipe_proses: str, cedant: str, selected_sheet: str, override_cob: str = None, custom_table_name: str = None) -> str:
+    if custom_table_name:
+        return custom_table_name.lower()
+    
+    # 1. Jika ada override_cob (misal: "FIRE"), gunakan COB tersebut
+    if override_cob:
+        cob_suffix = override_cob.lower()
+    else:
+        # 2. Deteksi COB dari nama sheet
+        s = selected_sheet.upper()
+        if 'FIRE' in s or 'PROPERTY' in s:
+            cob_suffix = 'fire'
+        elif 'ENG' in s or 'ENGINEERING' in s:
+            cob_suffix = 'engineering'
+        elif 'CARGO' in s:
+            cob_suffix = 'cargo'
+        elif 'HULL' in s:
+            cob_suffix = 'hull'
+        elif 'MOTOR' in s or 'KENDARAAN' in s:
+            cob_suffix = 'motor'
+        elif 'KREDIT' in s or 'CREDIT' in s:
+            cob_suffix = 'credit'
+        else:
+            cob_suffix = re.sub(r'[^a-zA-Z0-9]', '_', selected_sheet.lower()).strip('_')
 
-    tipe = tipe_proses.lower().strip()
-    cedant_key = cedant.lower().strip()
-    cob_suffix = resolve_cob_from_sheet(selected_sheet)
-
-    return f"{tipe}_{cedant_key}_{cob_suffix}"
+    return f"{tipe_proses.lower()}_{cedant.lower()}_{cob_suffix}"
 
 
-def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target_sheet: str, custom_table_name: str = None) -> dict:
+def check_target_table_in_db(
+    file_id: str,
+    tipe_proses: str,
+    cedant: str,
+    target_sheet: str,
+    custom_table_name: str = None,
+) -> dict:
     file_path = get_temp_file_path(file_id)
     cedant_key = cedant.lower()
 
@@ -78,7 +142,9 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
     actual_sheet = sheets_map.get(target_sheet.lower().strip(), target_sheet)
 
     # Oper custom_table_name ke helper
-    table_name = get_target_table_name(tipe_proses, cedant, actual_sheet, custom_table_name)
+    table_name = get_target_table_name(
+        tipe_proses, cedant, actual_sheet, custom_table_name
+    )
 
     if tipe_proses.lower() == "claim":
         master_cols = MASTER_COLUMNS_CLAIM.get(cedant_key, [])
@@ -94,10 +160,13 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
 
     if table_exists:
         db_columns_info = inspector.get_columns(table_name)
-        db_columns = [col['name'] for col in db_columns_info]
+        db_columns = [col["name"] for col in db_columns_info]
 
         mapping_matrix = [
-            {"column_name": col, "status": "MATCH" if col in db_columns else "MISSING_IN_DB"}
+            {
+                "column_name": col,
+                "status": "MATCH" if col in db_columns else "MISSING_IN_DB",
+            }
             for col in master_cols
         ]
 
@@ -107,7 +176,7 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
             "table_name": table_name,
             "table_exists": True,
             "mapping_matrix": mapping_matrix,
-            "message": f"Tabel '{table_name}' SUDAH EKSIS di database."
+            "message": f"Tabel '{table_name}' SUDAH EKSIS di database.",
         }
     else:
         df_sample = read_excel_dynamic_header(file_path, actual_sheet).head(10)
@@ -119,17 +188,25 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
             if col in df_sample.columns:
                 dtype_str = str(df_sample[col].dtype)
 
-                if 'int' in dtype_str:
+                if "int" in dtype_str:
                     suggested_type = "BIGINT"
-                elif 'float' in dtype_str:
+                elif "float" in dtype_str:
                     suggested_type = "DOUBLE PRECISION"
-                elif 'datetime' in dtype_str:
+                elif "datetime" in dtype_str:
                     suggested_type = "TIMESTAMP"
 
-            if col in ["insured_name", "location", "occupation", "cause_of_loss", "note"]:
+            if col in [
+                "insured_name",
+                "location",
+                "occupation",
+                "cause_of_loss",
+                "note",
+            ]:
                 suggested_type = "TEXT"
 
-            schema_suggestions.append({"column_name": col, "suggested_sql_type": suggested_type})
+            schema_suggestions.append(
+                {"column_name": col, "suggested_sql_type": suggested_type}
+            )
 
         return {
             "file_id": file_id,
@@ -137,13 +214,13 @@ def check_target_table_in_db(file_id: str, tipe_proses: str, cedant: str, target
             "table_name": table_name,
             "table_exists": False,
             "recommended_create_table_ddl": schema_suggestions,
-            "message": f"Tabel '{table_name}' BELUM ADA di database."
+            "message": f"Tabel '{table_name}' BELUM ADA di database.",
         }
 
 
 def sanitize_column_name(col_name: str) -> str:
     col_name = col_name.strip().lower()
-    match = re.match(r'^(\d+)_(.+)$', col_name)
+    match = re.match(r"^(\d+)_(.+)$", col_name)
     if match:
         number_part, text_part = match.groups()
         return f"{text_part}_{number_part}"
@@ -169,5 +246,5 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     return {
         "status": "success",
         "table_name": table_name,
-        "message": f"Tabel '{table_name}' berhasil dibuat murni murni dari kolom Excel!"
+        "message": f"Tabel '{table_name}' berhasil dibuat murni murni dari kolom Excel!",
     }

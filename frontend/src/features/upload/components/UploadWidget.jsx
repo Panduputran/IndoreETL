@@ -117,7 +117,7 @@ export default function UploadWidget({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // AUTO-INSPECT SAAT FILE DIPILIH
+ // AUTO-INSPECT SAAT FILE DIPILIH (PARALEL & CEPAT)
   const handleAddFiles = async (incomingFiles) => {
     if (!selectedCedant) {
       alert("Silakan pilih Nama Cedant terlebih dahulu!");
@@ -128,19 +128,21 @@ export default function UploadWidget({
       (file) =>
         file.name.endsWith(".xlsx") ||
         file.name.endsWith(".xls") ||
-        file.name.endsWith(".csv"),
+        file.name.endsWith(".csv")
     );
 
-    // 1. Ekstrak langsung dengan Parser Cerdas di Frontend
-    const initialObjects = validFiles.map((file) => {
+    if (validFiles.length === 0) return;
+
+    // 1. Ekstrak metadata di frontend & pasang status isInspecting: true
+    const newFileObjects = validFiles.map((file) => {
       const detected = detectPeriodAndYear(file.name);
       return {
         rawFile: file,
         name: file.name,
         size: file.size,
         category: detected.category,
-        period: detected.period, // Langsung terisi Q1/Q2/Q3/Q4
-        receivedDate: detected.year, // Langsung terisi 2026/2025/2024
+        period: detected.period,
+        receivedDate: detected.year,
         isInspecting: true,
         file_id: null,
         available_sheets: [],
@@ -150,22 +152,18 @@ export default function UploadWidget({
       };
     });
 
-    const updatedFileList =
-      uploadMode === "single"
-        ? initialObjects.slice(0, 1)
-        : [...files, ...initialObjects];
-    setFiles(updatedFileList);
+    const targetList = uploadMode === "single" ? newFileObjects.slice(0, 1) : [...files, ...newFileObjects];
+    setFiles(targetList);
 
-    // 2. Eksekusi Inspect ke Backend hanya untuk mengambil file_id & available_sheets
-    for (let i = 0; i < updatedFileList.length; i++) {
-      const item = updatedFileList[i];
-      if (!item.isInspecting) continue;
+    // 2. Eksekusi inspectFile secara PARALEL untuk semua file yang belum di-inspect
+    const inspectPromises = targetList.map(async (item) => {
+      if (!item.isInspecting) return item;
 
       try {
         const res = await inspectFile(
           item.rawFile,
           item.category,
-          selectedCedant.code,
+          selectedCedant.code
         );
         const sheets = res.data?.available_sheets || [];
         const returnedFileId = res.data?.file_id || null;
@@ -178,32 +176,27 @@ export default function UploadWidget({
         const defaultSheet = sheets[0] || "";
         const defaultCob = detectedCobs[0]?.cobCode || "FIRE";
 
-        setFiles((prev) =>
-          prev.map((f, idx) => {
-            if (idx === i) {
-              return {
-                ...f,
-                isInspecting: false,
-                file_id: returnedFileId, // Simpan file_id asli dari backend
-                available_sheets: sheets,
-                available_cobs: detectedCobs,
-                selectedSheet: defaultSheet,
-                cob: defaultCob,
-                // Pertahankan periode & tahun hasil deteksi cerdas nama file
-                period: f.period,
-                receivedDate: f.receivedDate,
-              };
-            }
-            return f;
-          }),
-        );
+        return {
+          ...item,
+          isInspecting: false,
+          file_id: returnedFileId,
+          available_sheets: sheets,
+          available_cobs: detectedCobs,
+          selectedSheet: defaultSheet,
+          cob: defaultCob,
+        };
       } catch (err) {
-        console.error("Gagal auto-inspect:", err);
-        setFiles((prev) =>
-          prev.map((f, idx) => (idx === i ? { ...f, isInspecting: false } : f)),
-        );
+        console.error(`Gagal inspect file ${item.name}:`, err);
+        return {
+          ...item,
+          isInspecting: false,
+        };
       }
-    }
+    });
+
+    // 3. Selesaikan semua request bersamaan dan update state sekali jalan
+    const resolvedFiles = await Promise.all(inspectPromises);
+    setFiles(resolvedFiles);
   };
 
   const handleUpdateFileField = (index, field, value) => {

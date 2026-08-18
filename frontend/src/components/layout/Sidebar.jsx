@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import indoreLogo from '../../assets/indore.png'; // Import aset logo gambar
 
-export default function Sidebar({ isBlocked = false }) { // <-- Tambah prop isBlocked
+export default function Sidebar({ isBlocked = false }) {
   const location = useLocation();
   
   // State untuk melacak menu mana yang sedang dibuka (dropdown)
   const [openDropdown, setOpenDropdown] = useState('');
 
-  // Data menu yang sudah di-update: Form IPR dipisah & ditambah Master (Mapping)
+  // Data menu: Dashboard, Upload, Bordero Cedant, Master, IPR
   const menuItems = [
     { 
       id: 'dashboard', 
@@ -57,16 +58,25 @@ export default function Sidebar({ isBlocked = false }) { // <-- Tambah prop isBl
         isBlocked ? 'pointer-events-none opacity-60' : ''
       }`}
     >
-      {/* Logo Area */}
-      <div className="h-20 flex items-center justify-between px-6">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xs">ETL</span>
+      {/* Logo Area dengan indore.png */}
+      <div className="h-20 flex items-center justify-between px-6 border-b border-slate-200/40">
+        <Link to="/dashboard" className="flex items-center gap-3 group">
+          <img 
+            src={indoreLogo} 
+            alt="Logo Indore" 
+            className="h-8 w-auto object-contain transition-transform group-hover:scale-105" 
+          />
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-900 text-base tracking-tight leading-none">
+              Indore
+            </span>
+            <span className="text-[10px] text-slate-400 font-semibold mt-0.5 tracking-wider uppercase">
+              Treaty System
+            </span>
           </div>
-          <span className="font-bold text-slate-900 text-lg tracking-tight">Indore</span>
-        </div>
+        </Link>
 
-        {/* Indikator Terkunci saat Preview (Tanpa Emoji) */}
+        {/* Indikator Terkunci saat Preview/Terminal Aktif */}
         {isBlocked && (
           <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
             Terkunci
@@ -74,22 +84,19 @@ export default function Sidebar({ isBlocked = false }) { // <-- Tambah prop isBl
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-8 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-8 custom-scrollbar">
         
         {/* Menu Utama */}
         <div>
           <p className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Menu</p>
           <nav className="space-y-1">
             {menuItems.map((item) => {
-              // Cek apakah menu ini punya sub-menu
               const hasSubItems = item.subItems && item.subItems.length > 0;
               
-              // Cek status aktif. Kalau punya sub-menu, dia aktif jika salah satu sub-menunya aktif.
               const isActive = hasSubItems 
                 ? item.subItems.some(sub => location.pathname.startsWith(sub.path))
                 : location.pathname.startsWith(item.path);
 
-              // Tentukan apakah dropdown harus terbuka
               const isOpen = openDropdown === item.id || (openDropdown === '' && isActive);
 
               const handleToggle = (e) => {
@@ -101,41 +108,39 @@ export default function Sidebar({ isBlocked = false }) { // <-- Tambah prop isBl
               return (
                 <div key={item.id} className="space-y-1">
                   {hasSubItems ? (
-                    // Render Tombol Dropdown
                     <button
                       onClick={handleToggle}
                       tabIndex={isBlocked ? -1 : 0}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
+                        isActive ? 'bg-slate-200/70 text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
                         </svg>
                         {item.label}
                       </div>
-                      <svg className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180 text-slate-700' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
                   ) : (
-                    // Render Menu Biasa (Tanpa Dropdown)
                     <Link 
                       to={isBlocked ? '#' : item.path}
                       tabIndex={isBlocked ? -1 : 0}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        isActive ? 'bg-slate-200/70 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                        isActive ? 'bg-slate-200/70 text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
-                      <svg className={`w-5 h-5 ${isActive ? 'text-slate-900' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} />
                       </svg>
                       {item.label}
                     </Link>
                   )}
 
-                  {/* Render Sub-Menu jika dropdown terbuka */}
+                  {/* Sub-menu Dropdown */}
                   {hasSubItems && isOpen && (
                     <div className="pl-11 pr-3 py-1 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
                       {item.subItems.map((sub) => {
@@ -146,7 +151,7 @@ export default function Sidebar({ isBlocked = false }) { // <-- Tambah prop isBl
                             to={isBlocked ? '#' : sub.path}
                             tabIndex={isBlocked ? -1 : 0}
                             className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              isSubActive ? 'text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                              isSubActive ? 'text-blue-600 bg-blue-50 font-bold' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                             }`}
                           >
                             {sub.label}

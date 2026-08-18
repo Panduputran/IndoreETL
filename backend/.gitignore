@@ -1,8 +1,25 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment
 .env
 .env.*
 !.env.example
 
+# Temporary uploads
 temp_uploads/
+
+# Build
+build/
+dist/
+*.egg-info/
 
 __pycache__/
 *.py[cod]
