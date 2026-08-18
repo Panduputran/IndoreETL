@@ -42,6 +42,16 @@ MASTER_COLUMNS_PREMI = {
 
 
 MASTER_COLUMNS_CLAIM = {
+    "aca": [
+        "reinsured", "reinsurer_id", "reinsurer_name", "treaty_id",
+        "class_of_business", "description", "type_of_cover", "business_type",
+        "treaty_year", "claim_no", "policy_number", "period_of_insurance_start",
+        "period_of_insurance_end", "start_period_master_policy", "date_of_loss",
+        "cause_of_loss", "claim_event", "our_share_percent", "reinsurer_share_percent",
+        "currency", "claim_amount_100", "reinsurance_claim",
+        "object_info_1", "object_info_2", "note", "period"
+    ],
+    
     "buanaindependent": [
         "no", "claim_reff_no", "policy_number", "insured_name", "cob_type_of_cover",
         "risk_cat", "uw_year", "period_of_insurance_start", "period_of_insurance_end",
@@ -70,9 +80,15 @@ MASTER_COLUMNS_CLAIM = {
 }
 
 SHEET_TO_TABLE_MAPPING = {
+    # --- ACA SPESIFIK (Non Marine & Marine Gabungan) ---
+    "non marine": "fire",
+    "non_marine": "fire",
+    "marine": "cargo",
+    
     # --- ACA / TRIPAKARTA ---
     "property": "fire",
     "mv": "motor",
+    "motor vehicle": "motor",
     "marine cargo": "cargo",
     "cargo": "cargo",
     "marine hull": "hull",
@@ -80,6 +96,7 @@ SHEET_TO_TABLE_MAPPING = {
     "engineering": "engineering",
     "liability": "liability",
     "travel ins": "travel",
+    "travel": "travel",
     "credit ins sbqs": "credit",
     "surety ship sbqs": "surety",
     "misc": "misc",
@@ -108,7 +125,6 @@ SHEET_TO_TABLE_MAPPING = {
     "claim qs tw 2": "credit",
     "claim qs tw 3": "credit",
     "claim qs tw 4": "credit",
-
     
     # --- CLAIM (Satu Tabel Fire) ---
     "claims qs": "fire",
