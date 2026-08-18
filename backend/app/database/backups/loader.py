@@ -36,18 +36,15 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     if df.empty:
         return 0
 
+    # Normalisasi kolom ke lower case
     df = df.copy()
     df.columns = [c.lower() for c in df.columns]
-
-    # --- TAMBAHKAN INI: Otomatis bulatkan semua kolom bertipe float ---
-    for col in df.select_dtypes(include=['float', 'float64']).columns:
-        # Gunakan round(0) jika ingin bulat utuh (474122), atau round(2) jika ingin 2 desimal (474122.16)
-        df[col] = df[col].round(2)
 
     # Bersihkan NaN/NaT menjadi None murni
     df_db = df.astype(object).where(pd.notnull(df), None)
 
     try:
+        # 1. Eksekusi tercepat via PostgreSQL COPY Stream (< 2 detik untuk 80k rows)
         with engine.begin() as conn:
             df_db.to_sql(
                 name=table_name.lower(),
@@ -58,6 +55,7 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
             )
     except Exception as e:
         print(f"[!] Warning: Gagal menggunakan COPY protocol ({e}). Menggunakan fallback standard chunk...")
+        # 2. Fallback aman jika driver non-psycopg
         total_cols = len(df.columns) if len(df.columns) > 0 else 1
         safe_chunksize = max(500, 30000 // total_cols)
         

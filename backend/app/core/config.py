@@ -11,10 +11,10 @@ MASTER_COLUMNS_PREMI = {
     "tripakarta": [
         "no", "cob", "reinsured", "policy_number", "insured_name",
         "uw_year", "currency", "breakdown_of_si_md_building", "mb", "stock",
-        "tpl", "bi", "other", "100_tsi", "basis_of_indemnity",
+        "tpl", "bi", "other", "tsi_100", "basis_of_indemnity",
         "occupation_code", "occupation", "location", "period_of_insurance_start", "end",
         "source_direct_coins_inward_fac", "cedant_s_share", "spreading_of_risk_or", "qs", "surplus",
-        "others", "100_premium", "premium_rate", "premi_qs", "comm_qs",
+        "others", "premium_100", "premium_rate", "premi_qs", "comm_qs",
         "premi_spl", "comm_spl", "marsh_re", "premium_qs_marsh_re_share", "premium_spl_marsh_re_share",
         "note", "remarks", "period", "treaty_name_qs", "treaty_name_surplus"
     ],

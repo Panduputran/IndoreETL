@@ -10,7 +10,7 @@ class TripakartaETL:
     def process_premi(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_PREMI["tripakarta"]
         
-        # 1. Ekstrak Treaty Name dari Header Atas
+        # Extrak Treaty Name jika ada di header atas
         df_top = pd.read_excel(file_path, sheet_name=target_sheet, nrows=6, header=None)
         treaty_raw = "Fire Quota Share Surplus"
         for i in range(len(df_top)):
@@ -32,56 +32,24 @@ class TripakartaETL:
             val_qs = treaty_raw
             val_surplus = treaty_raw
 
-        # 2. Baca Data dan Standarisasi Header
         df = read_excel_dynamic_header(file_path, target_sheet)
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
         rename_mapping = {
-            # 1. MD/Building & Breakdown SI
-            'breakdown_of_si_mdbuilding': 'breakdown_of_si_md_building',
-            'breakdown_of_si_md_building': 'breakdown_of_si_md_building',
-            'breakdown_of_si_mb': 'mb', 
-            'breakdown_of_si_stock': 'stock',
-            'breakdown_of_si_tpl': 'tpl', 
-            'breakdown_of_si_bi': 'bi',
-            'breakdown_of_si_other': 'other', 
-
-            # 2. Source
-            'source_directcoinsinward_fac': 'source_direct_coins_inward_fac',
-            'source_direct_coins_inward_fac': 'source_direct_coins_inward_fac',
-            'source': 'source_direct_coins_inward_fac',
-
-            # 3. TSI & Premi (hindari awalan angka)
-            '100_tsi': 'tsi_100',
-            '100percent_tsi': 'tsi_100',
-            'tsi_100': 'tsi_100',
-            '100_premium': 'premium_100',
-            '100percent_premium': 'premium_100',
-            'premium_100': 'premium_100',
-
-            # 4. Spreading & Periode
-            'period_of_insurance_end': 'end', 
-            'cedants_share': 'cedant_s_share',
-            'spreading_of_risk_qs': 'qs', 
-            'spreading_of_risk_surplus': 'surplus',
-            'spreading_of_risk_others': 'others',
-            'percent_marsh_re': 'marsh_re',
-            'marsh_re_share': 'marsh_re'
+            'breakdown_of_si_mb': 'mb', 'breakdown_of_si_stock': 'stock',
+            'breakdown_of_si_tpl': 'tpl', 'breakdown_of_si_bi': 'bi',
+            'breakdown_of_si_other': 'other', '100percent_tsi': '100_tsi',
+            'period_of_insurance_end': 'end', 'cedants_share': 'cedant_s_share',
+            'spreading_of_risk_qs': 'qs', 'spreading_of_risk_surplus': 'surplus',
+            'spreading_of_risk_others': 'others', '100percent_premium': '100_premium',
+            'percent_marsh_re': 'marsh_re'
         }
-        
         df.rename(columns=rename_mapping, inplace=True)
-        df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 3. Sanitasi String ID & Metadata
         if 'no' in df.columns:
             df['no'] = df['no'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df['no'] = df['no'].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
         if 'policy_number' in df.columns:
             df['policy_number'] = df['policy_number'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df['policy_number'] = df['policy_number'].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
-        if 'uw_year' in df.columns:
-            df['uw_year'] = df['uw_year'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df['uw_year'] = df['uw_year'].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
 
         df['period'] = periode_lengkap
         df['treaty_name_qs'] = val_qs
@@ -91,39 +59,13 @@ class TripakartaETL:
             if 'cob' in df.columns:
                 df['cob'] = override_cob.strip().upper()
 
-        # 4. Validasi Tanggal
-        df = validate_dates(df)
-
-        # 5. Sinkronisasi Kolom Master
         for col in master_cols:
             if col not in df.columns:
                 df[col] = np.nan
 
         df_clean = df[master_cols].copy()
-
-        # 6. Filter Baris Sampah & Total Footer
-        if "policy_number" in df_clean.columns:
-            df_clean = df_clean.dropna(subset=["policy_number"], how="all")
-            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
-            pol_str = df_clean["policy_number"].astype(str).str.upper().str.strip()
-            df_clean = df_clean[~pol_str.str.match(trash_exact_pattern, na=False)]
-
-        # 7. Sanitasi & Konversi Semua Kolom Numerik (PENTING AGAR TIDAK ERROR SQL)
-        num_cols = [
-            "breakdown_of_si_md_building", "mb", "stock", "tpl", "bi", "other",
-            "100_tsi", "cedant_s_share", "spreading_of_risk_or", "qs", "surplus",
-            "others", "100_premium", "premium_rate", "premi_qs", "comm_qs",
-            "premi_spl", "comm_spl", "marsh_re", "premium_qs_marsh_re_share",
-            "premium_spl_marsh_re_share"
-        ]
-        for col in num_cols:
-            if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(
-                    df_clean[col].astype(str).str.replace(',', '').str.replace(' ', '').str.strip(),
-                    errors='coerce'
-                )
-
-        return df_clean.reset_index(drop=True)
+        df_clean = df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period'])
+        return df_clean
 
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
