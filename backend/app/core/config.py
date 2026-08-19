@@ -118,14 +118,14 @@ SHEET_TO_TABLE_MAPPING = {
     "credit": "credit",
 
     # --- ASKRIDA Claim ---
-    "klaim qs tw 1": "credit",
-    "klaim qs tw 2": "credit",
-    "klaim qs tw 3": "credit",
-    "klaim qs tw 4": "credit",
-    "claim qs tw 1": "credit",
-    "claim qs tw 2": "credit",
-    "claim qs tw 3": "credit",
-    "claim qs tw 4": "credit",
+    "klaim qs tw 1": "kredit",
+    "klaim qs tw 2": "kredit",
+    "klaim qs tw 3": "kredit",
+    "klaim qs tw 4": "kredit",
+    "claim qs tw 1": "kredit",
+    "claim qs tw 2": "kredit",
+    "claim qs tw 3": "kredit",
+    "claim qs tw 4": "kredit",
     
     # --- CLAIM (Satu Tabel Fire) ---
     "claims qs": "fire",

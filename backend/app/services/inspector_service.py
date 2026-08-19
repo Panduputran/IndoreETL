@@ -128,11 +128,20 @@ def get_target_table_name(
     clean_tipe = tipe_proses.lower().strip()
     clean_cedant = cedant.lower().strip()
 
-    # 3. Khusus ASKRIDA: format {tipe}_{cob}_{cedant} -> claim_kredit_askrida
+    # 3. Khusus ASKRIDA: format {tipe}_{cob}_{cedant}
     if clean_cedant == "askrida":
+        if clean_tipe == "claim":
+            # Jika klaim, paksa ejaan 'kredit'
+            if cob_suffix == "credit":
+                cob_suffix = "kredit"
+        else:
+            # Jika premi, paksa ejaan 'credit'
+            if cob_suffix == "kredit":
+                cob_suffix = "credit"
+        
         return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
 
-    # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} -> claim_aca_fire
+    # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} (misal: claim_aca_fire)
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
 
 
