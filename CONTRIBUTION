@@ -72,3 +72,34 @@ Rangkuman pembaruan sistem backend terkait pemrosesan ETL data Cedant (Askrida, 
 - Pembuatan struktur tabel dan JSON Schema untuk `premi_aca_fire`.
 
 notes: sudah ada backups
+
+### 🚀 Changelog & Contributions
+
+#### 1. `app/core/config.py`
+- **Enhanced `SHEET_TO_TABLE_MAPPING`:** Memperluas kamus pemetaan nama sheet (bilingual ID/EN) untuk mendeteksi berbagai variasi nama sheet bordereaux secara universal (Fire/Property, Marine Cargo, Marine Hull, Motor, Engineering, Askrida Credit, Buana, dll.).
+
+#### 2. `app/services/inspector_service.py`
+- **Smart Dynamic Table Name Resolver (`get_target_table_name` & `resolve_cob_from_sheet`):**
+  - Mengintegrasikan resolusi nama tabel otomatis berbasis kamus mapping tanpa perlu input manual `custom_table_name`.
+  - **Special Naming Convention for Askrida:** Menambahkan aturan khusus format tabel Askrida:
+    - Klaim: `claim_kredit_askrida` (COB di tengah, format bahasa Indonesia).
+    - Premi: `premi_credit_askrida` (COB di tengah, format bahasa Inggris).
+    - Cedant lain tetap mengikuti standar: `{tipe_proses}_{cedant}_{cob}` (contoh: `claim_aca_fire`).
+- **Fix DB Check & Inspector:**
+  - Memperbaiki bug urutan *positional arguments* saat memanggil resolver nama tabel pada `check_target_table_in_db`.
+  - Menambahkan import `zipfile` dan `xml.etree.ElementTree` untuk ekstraksi instan manifest sheet Excel.
+  - Sanitasi penanganan input default Swagger (`""` atau `"string"`).
+
+#### 3. `app/services/cedants/aca.py`
+- **Fix Scientific Notation & String Formatting (`format_id_column`):**
+  - Mencegah konversi nomor klaim/polis berukuran besar menjadi notasi ilmiah float/eksponensial (contoh: `8.11e+16`).
+  - Menghilangkan suffix `.0` pada kolom identifier teks/ID (`claim_no`, `policy_number`, `reinsurer_id`, `treaty_id`, dll.).
+- **Data Pipeline Refactor (`process_premi` & `process_claim`):**
+  - Pemetaan alias header Excel ACA yang komprehensif.
+  - Penanganan kolom persentase share (`ACA'S SHARE (%)` & `REINSURER SHARE (%)`).
+  - Pembersihan baris footer/rekap/total serta sinkronisasi master output columns.
+
+#### 4. `app/api/v1/endpoints/etl.py` (Controller/Router)
+- **Safe Payload & Validation:**
+  - Menambahkan validasi pengecekan *empty dataframe* sebelum proses insert database.
+  - Sinkronisasi passing parameter `override_cob` pada batch processing endpoint (`/process-batch`).

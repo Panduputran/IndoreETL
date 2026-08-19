@@ -1,7 +1,25 @@
+import re
 import numpy as np
 import pandas as pd
 from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM
-from app.utils.helpers import read_excel_dynamic_header, to_snake_case
+from app.utils.helpers import read_excel_dynamic_header, to_snake_case, validate_dates
+
+
+def format_id_column(val):
+    """Sanitasi string ID agar tidak berubah menjadi float ilmiah (e+16) atau berakhiran .0"""
+    if pd.isna(val):
+        return np.nan
+    if isinstance(val, (float, np.floating)):
+        if np.isnan(val) or np.isinf(val):
+            return np.nan
+        if val.is_integer():
+            return f"{int(val)}"
+        return f"{val:.0f}"
+    val_str = str(val).strip()
+    if val_str.lower() in ["nan", "none", "nat", "null", ""]:
+        return np.nan
+    return val_str.replace(".0", "") if val_str.endswith(".0") else val_str
+
 
 class BuanaIndependentETL:
     """Modul khusus pemrosesan data Buana Independent (Premi & Klaim)"""
@@ -69,57 +87,87 @@ class BuanaIndependentETL:
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_CLAIM["buanaindependent"]
+        
+        # 1. Baca Excel dinamis
         df = read_excel_dynamic_header(file_path, target_sheet)
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
-        clean_cols = []
-        for col in df.columns:
-            if col.startswith("spreading_of_risk_") or col.startswith("spreading_of_claim_"):
-                col = col.replace("spreading_of_risk_", "spreading_of_claim_")
-            if col in ["period_of_start", "period_start"]:
-                col = "period_of_insurance_start"
-            elif col in ["period_of_end", "period_end"]:
-                col = "period_of_insurance_end"
-            clean_cols.append(col)
-        df.columns = clean_cols
-
+        # 2. Mapping Explicit untuk Merged Header & Kolom Unnamed Buana
         rename_mapping = {
+            # Merged Header 1: Period of Insurance (From & To)
+            "period_of_insurance": "period_of_insurance_start",
+            "unnamed_8": "period_of_insurance_end",
+            
+            # Merged Header 2: Cedant's Share (% & Amount)
+            "cedants_share": "cedants_share_percent",
+            "unnamed_17": "cedants_share_in_amount",
+            
+            # Merged Header 3: Spreading of Claim (OR, QS, Surplus, Others)
+            "spreading_of_claim": "spreading_of_claim_or",
+            "unnamed_19": "spreading_of_claim_qs",
+            "unnamed_20": "spreading_of_claim_surplus",
+            "unnamed_21": "spreading_of_claim_others",
+            
+            # Header Non-Spasi / Alias Lain
+            "riskcat": "risk_cat",
+            "source_directcoinsinward_fac": "source_direct_coins_inward_fac",
             "claim_no": "claim_reff_no",
-            "claim_ref_no": "claim_reff_no",
-            "claim_reference_no": "claim_reff_no",
             "policy_no": "policy_number",
-            "type_of_cover": "cob_type_of_cover",
-            "cob": "cob_type_of_cover",
-            "date_of_loss": "dol",
+            "occ_code": "occupation_code",
             "currency": "curr",
-            "100_claim": "claim_100",
-            "100_claim_amount": "claim_100",
-            "cedant_share_percent": "cedants_share_percent",
-            "cedant_share_amount": "cedants_share_in_amount",
-            "cedants_share_amount": "cedants_share_in_amount",
-            "paid_claim": "paid_claims_treaty_share",
-            "outstanding_claim": "outstanding_claims_treaty_share"
+            "remarks": "note"
         }
         df.rename(columns=rename_mapping, inplace=True)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
 
+        # 3. Set Periode & Override COB
         df['period'] = periode_lengkap
-
         if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
             if 'cob_type_of_cover' in df.columns:
                 df['cob_type_of_cover'] = override_cob.strip().upper()
 
+        # 4. Sanitasi Kolom ID & String (Bebas .0 dan eksponensial)
+        string_id_cols = [
+            "claim_reff_no", "policy_number", "insured_name", "cob_type_of_cover",
+            "risk_cat", "uw_year", "occupation_code", "occupation", "zip_code",
+            "source_direct_coins_inward_fac", "curr", "note"
+        ]
+        for col in string_id_cols:
+            if col in df.columns:
+                df[col] = df[col].apply(format_id_column)
+
+        # 5. Validasi Tanggal
+        df = validate_dates(df)
+
+        # 6. Sanitasi Kolom Numerik
+        num_cols = [
+            "claim_100", "cedants_share_percent", "cedants_share_in_amount",
+            "spreading_of_claim_or", "spreading_of_claim_qs", "spreading_of_claim_surplus",
+            "spreading_of_claim_others", "paid_claims_treaty_share", "outstanding_claims_treaty_share"
+        ]
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(',', '').str.replace(' ', '').str.strip(),
+                    errors='coerce'
+                )
+
+        # 7. Sanitasi Khusus Kolom 'no' (Agar PostgreSQL COPY protocol sukses tanpa error '1.0')
+        if "no" in df.columns:
+            df["no"] = pd.to_numeric(df["no"], errors='coerce').fillna(0).astype('int64')
+
+        # 8. Sinkronkan dengan Master Kolom Config
         for col in master_cols:
             if col not in df.columns:
                 df[col] = np.nan
 
         df_clean = df[master_cols].copy()
-        num_cols = [
-            "no", "uw_year", "claim_100", "cedants_share_percent", "cedants_share_in_amount",
-            "spreading_of_claim_or", "spreading_of_claim_qs", "spreading_of_claim_surplus",
-            "spreading_of_claim_others", "paid_claims_treaty_share", "outstanding_claims_treaty_share"
-        ]
-        for col in num_cols:
-            if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
 
-        return df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period'])
+        # 9. Filter Baris Total Rekap & Baris Kosong
+        if "claim_reff_no" in df_clean.columns:
+            df_clean = df_clean.dropna(subset=["claim_reff_no"])
+            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
+            reff_str = df_clean["claim_reff_no"].astype(str).str.upper().str.strip()
+            df_clean = df_clean[~reff_str.str.match(trash_exact_pattern, na=False)]
+
+        return df_clean.reset_index(drop=True)
