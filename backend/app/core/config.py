@@ -42,14 +42,27 @@ MASTER_COLUMNS_PREMI = {
 
 
 MASTER_COLUMNS_CLAIM = {
-    "aca": [
-        "reinsured", "reinsurer_id", "reinsurer_name", "treaty_id",
-        "class_of_business", "description", "type_of_cover", "business_type",
-        "treaty_year", "claim_no", "policy_number", "period_of_insurance_start",
-        "period_of_insurance_end", "start_period_master_policy", "date_of_loss",
-        "cause_of_loss", "claim_event", "our_share_percent", "reinsurer_share_percent",
-        "currency", "claim_amount_100", "reinsurance_claim",
-        "object_info_1", "object_info_2", "note", "period"
+    "askrida": [
+        "no",
+        "cob",
+        "claim_reff_number",
+        "policy_number",
+        "reff_of_no_bordereaux",
+        "nama_bank_tertanggung",
+        "insured_name",
+        "insured_amount",
+        "period_of_insurance_start",
+        "period_of_insurance_end",
+        "waktu_pertanggungan_bulan",
+        "uw_year",
+        "date_of_loss",
+        "cause_of_loss",
+        "currency",
+        "total_incurred_claim",
+        "paid_claims_reins_share",
+        "paid_claims_indore_share",
+        "note",
+        "period"
     ],
     
     "buanaindependent": [
@@ -82,6 +95,8 @@ MASTER_COLUMNS_CLAIM = {
 SHEET_TO_TABLE_MAPPING = {
     # --- ACA SPESIFIK (Non Marine & Marine Gabungan) ---
     "Non Marine": "fire",
+    "non-marine": "fire",
+    "nonmarine" : "fire",
     "non marine": "fire",
     "non_marine": "fire",
     "marine": "cargo",

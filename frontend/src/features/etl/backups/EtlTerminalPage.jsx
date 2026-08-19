@@ -3,10 +3,15 @@ import {
   CheckCircle2, 
   Loader2, 
   ArrowRight, 
+  FileCode2, 
   Terminal, 
   AlertCircle,
+  Database,
+  Layers,
+  Calendar,
   XCircle,
-  ShieldAlert
+  ShieldAlert,
+  Clock
 } from 'lucide-react';
 import { useSidebar } from '../../../components/context/SidebarContext';
 import apiClient from '../../../utils/apiClient';
@@ -27,6 +32,7 @@ export default function EtlTerminalPage({
   const [isCancelled, setIsCancelled] = useState(false);
   const [processedSummary, setProcessedSummary] = useState(null);
 
+  // State Modal Konfirmasi Batal ala GitHub
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelInputText, setCancelInputText] = useState('');
 
@@ -59,12 +65,15 @@ export default function EtlTerminalPage({
       const startTime = new Date().toLocaleString('id-ID');
       const isSingle = uploadMode === 'single' || files.length === 1;
 
-      addLog(`Memulai sinkronisasi pipeline ETL (${isSingle ? 'Single File' : 'Batch Processing'})...`, 'header');
-      addLog(`Perusahaan Cedant: ${cedantName || cedantCode} [${cedantCode?.toUpperCase()}] — ${files.length} Dokumen`, 'info');
-      setProgress(15);
+      addLog(`Inisialisasi pipeline ETL (${isSingle ? 'SINGLE MODE' : 'BATCH MODE'})...`, 'header');
+      addLog(`Perusahaan Cedant : ${cedantName || cedantCode} [${cedantCode?.toUpperCase()}]`, 'info');
+      addLog(`Jumlah Berkas    : ${files.length} Dokumen`, 'info');
+      setProgress(10);
 
+      // Siapkan payload terstruktur
       const payloadItems = files.map(f => {
         const targetTable = f.target_table || f.targetTable || null;
+        
         return {
           file_id: f.file_id,
           tipe_proses: (f.category || 'premi').toLowerCase(),
@@ -78,15 +87,19 @@ export default function EtlTerminalPage({
         };
       });
 
+      // Cetak Metadata Setiap Berkas ke Terminal
       payloadItems.forEach((item, idx) => {
         addLog(
-          `Berkas ${idx + 1}: Sheet "${item.target_sheet}" | Periode ${item.kuartal} ${item.tahun}`,
+          `[Item ${idx + 1}] File ID: ${item.file_id} | COB: ${item.override_cob || 'Auto'} | Periode: ${item.kuartal} ${item.tahun} | Sheet: "${item.target_sheet}"`,
           'file-ready',
           item
         );
+        if (item.target_table) {
+          addLog(`  ↳ Target Database: public."${item.target_table}"`, 'db-target');
+        }
       });
 
-      setProgress(35);
+      setProgress(25);
 
       try {
         let finalFilesReport = [];
@@ -94,7 +107,8 @@ export default function EtlTerminalPage({
 
         if (isSingle) {
           const singlePayload = payloadItems[0];
-          addLog(`Mengirim berkas ke database server...`, 'process');
+          addLog(`Mengirim request eksekusi ke POST /api/v1/etl/process...`, 'process');
+          addLog(`Memulai transformasi & validasi baris di server... Mohon tunggu.`, 'info');
           
           const response = await apiClient.post('/etl/process', singlePayload, {
             signal: abortControllerRef.current.signal
@@ -106,7 +120,7 @@ export default function EtlTerminalPage({
             const rows = response.data.detail?.total_rows_inserted || 0;
             const targetTableRes = response.data.detail?.target_table;
             totalInsertedRows = rows;
-            addLog(`Sukses: ${rows.toLocaleString('id-ID')} baris masuk ke tabel "${targetTableRes}".`, 'success');
+            addLog(`✓ Sukses: ${rows.toLocaleString('id-ID')} baris masuk ke tabel "${targetTableRes}".`, 'success');
             
             finalFilesReport.push({
               id: singlePayload.file_id,
@@ -121,7 +135,8 @@ export default function EtlTerminalPage({
             });
           }
         } else {
-          addLog(`Memproses batch (${payloadItems.length} berkas) ke database...`, 'process');
+          addLog(`Mengirim request batch (${payloadItems.length} berkas) ke POST /api/v1/etl/process-batch...`, 'process');
+          addLog(`Memproses multi-sheet & insert bertahap...`, 'info');
 
           const response = await apiClient.post('/etl/process-batch', payloadItems, {
             signal: abortControllerRef.current.signal
@@ -137,11 +152,11 @@ export default function EtlTerminalPage({
               if (isSuccess) {
                 totalInsertedRows += (detail.rows_inserted || 0);
                 addLog(
-                  `Sheet "${detail.target_sheet}" ➔ Tabel "${detail.target_table}": ${detail.rows_inserted.toLocaleString('id-ID')} baris tersimpan.`,
+                  `✓ [${detail.file_id}] Sheet "${detail.target_sheet}" ➔ Tabel "${detail.target_table}": ${detail.rows_inserted.toLocaleString('id-ID')} baris tersimpan.`,
                   'success'
                 );
               } else {
-                addLog(`Sheet "${detail.target_sheet}" gagal: ${detail.error_message}`, 'error');
+                addLog(`✗ [${detail.file_id}] Gagal: ${detail.error_message}`, 'error');
               }
 
               finalFilesReport.push({
@@ -163,7 +178,7 @@ export default function EtlTerminalPage({
         }
 
         const endTime = new Date().toLocaleString('id-ID');
-        addLog(`Sinkronisasi selesai. Total ${totalInsertedRows.toLocaleString('id-ID')} baris berhasil diproses.`, 'done');
+        addLog(`Proses ETL tuntas tanpa kendala. Total ${totalInsertedRows.toLocaleString('id-ID')} baris siap diverifikasi!`, 'done');
         setProgress(100);
         setIsProcessing(false);
         setIsDone(true);
@@ -182,10 +197,10 @@ export default function EtlTerminalPage({
 
       } catch (error) {
         if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
-          addLog(`Eksekusi proses dibatalkan oleh pengguna.`, 'warn');
+          addLog(`⚠ Eksekusi ETL berhasil dibatalkan oleh pengguna.`, 'warn');
           setIsCancelled(true);
         } else {
-          addLog(`Gagal: ${error.response?.data?.detail || error.message}`, 'error');
+          addLog(`✗ Terjadi kegagalan: ${error.response?.data?.detail || error.message}`, 'error');
         }
         setIsProcessing(false);
       }
@@ -194,6 +209,7 @@ export default function EtlTerminalPage({
     runExecution();
   }, [files, cedantCode, cedantName, uploadMode, activityTitle]);
 
+  // Handler Konfirmasi Pembatalan
   const handleConfirmCancel = () => {
     if (cancelInputText.trim() !== 'ABORT-PROCESS') return;
     if (abortControllerRef.current) {
@@ -202,37 +218,29 @@ export default function EtlTerminalPage({
     setShowCancelModal(false);
   };
 
-  const handleBackToUpload = () => {
-    setIsSidebarBlocked(false);
-    if (typeof onCancel === 'function') {
-      onCancel();
-    } else {
-      window.location.reload();
-    }
-  };
-
   return (
     <div className="w-full p-2 md:p-4 font-sans text-xs">
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+      <div className="bg-white rounded-3xl border border-slate-200/90 p-6 md:p-7 shadow-xs space-y-5 w-full">
         
-        {/* Header Console */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        {/* Header Terminal */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center">
-              <Terminal className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-sm">
+              <Terminal className="w-5 h-5 text-blue-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-bold text-slate-800 text-sm">Execution Console</h2>
+                <h2 className="font-bold text-slate-800 text-sm">Terminal Eksekusi & Injeksi Database</h2>
                 <span className="font-mono text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md border border-blue-200 uppercase">
                   {cedantCode}
                 </span>
               </div>
-              <p className="text-slate-400 text-[11px] mt-0.5">Memproses sinkronisasi data transaksi ke database PostgreSQL.</p>
+              <p className="text-slate-400 text-[11px] mt-0.5">Memvalidasi skema berkas mentah dan menyuntikkan data transaksi ke database.</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Tombol Batal Eksekusi */}
             {isProcessing && (
               <button
                 type="button"
@@ -240,49 +248,58 @@ export default function EtlTerminalPage({
                   setCancelInputText('');
                   setShowCancelModal(true);
                 }}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer text-xs"
+                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer text-xs"
               >
-                <XCircle className="w-3.5 h-3.5" />
-                <span>Batalkan</span>
+                <XCircle className="w-4 h-4 text-rose-600" />
+                <span>Batalkan Proses</span>
               </button>
             )}
 
-            <div className="flex items-center gap-2 font-mono font-bold text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-              <span className="text-slate-500">Status:</span>
-              <span className={isCancelled ? 'text-rose-600' : isDone ? 'text-emerald-600' : 'text-blue-600'}>
-                {isCancelled ? 'ABORTED' : `${progress}%`}
+            <div className="flex items-center gap-2 font-mono font-bold text-xs bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              <span className="text-slate-400">Progress:</span>
+              <span className={isCancelled ? 'text-rose-600' : 'text-blue-600'}>
+                {isCancelled ? 'BATAL' : `${progress}%`}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Clean White Process Log Box */}
-        <div className="bg-white rounded-xl p-4 h-80 overflow-y-auto space-y-2 border border-slate-200 shadow-inner">
+        {/* Console Box Terminal */}
+        <div className="bg-[#0D1117] text-slate-200 rounded-2xl p-5 h-96 overflow-y-auto space-y-2 font-mono text-[11px] custom-scrollbar w-full shadow-inner border border-slate-800">
           {logs.map((log, index) => (
-            <div key={index} className="flex items-start gap-2.5 leading-relaxed">
-              <span className="text-slate-400 select-none font-mono text-[11px] shrink-0 pt-0.5">
-                {log.timestamp}
-              </span>
+            <div key={index} className="flex items-start gap-2.5 animate-in fade-in duration-100">
+              <span className="text-slate-600 select-none text-[10px] pt-0.5">[{log.timestamp}]</span>
               
-              <span className={`shrink-0 font-bold text-xs ${
-                log.type === 'done' || log.type === 'success' ? 'text-emerald-600' :
-                log.type === 'error' ? 'text-rose-600' :
-                log.type === 'warn' ? 'text-amber-600' :
-                log.type === 'header' || log.type === 'process' ? 'text-blue-600' :
-                'text-slate-400'
-              }`}>
-                &gt;
+              <span className="shrink-0 mt-0.5">
+                {log.type === 'done' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : log.type === 'success' ? (
+                  <span className="text-emerald-400 font-bold">✔</span>
+                ) : log.type === 'error' ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                ) : log.type === 'warn' ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                ) : log.type === 'file-ready' ? (
+                  <FileCode2 className="w-3.5 h-3.5 text-indigo-400" />
+                ) : log.type === 'db-target' ? (
+                  <Database className="w-3.5 h-3.5 text-cyan-400" />
+                ) : log.type === 'process' ? (
+                  <Layers className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <span className="text-slate-500 font-bold">&gt;</span>
+                )}
               </span>
 
-              <span className={`break-all font-sans text-[12px] tracking-normal ${
-                log.type === 'done' ? 'text-emerald-700 font-semibold' :
-                log.type === 'success' ? 'text-emerald-600 font-medium' :
-                log.type === 'error' ? 'text-rose-600 font-semibold' :
-                log.type === 'warn' ? 'text-amber-600 font-medium' :
-                log.type === 'file-ready' ? 'text-slate-700' :
-                log.type === 'header' ? 'text-blue-700 font-bold' :
-                log.type === 'process' ? 'text-blue-600 font-medium' :
-                'text-slate-600'
+              <span className={`leading-relaxed ${
+                log.type === 'done' ? 'text-emerald-300 font-bold' :
+                log.type === 'success' ? 'text-slate-100' :
+                log.type === 'error' ? 'text-rose-300 font-bold' :
+                log.type === 'warn' ? 'text-amber-300 font-semibold' :
+                log.type === 'file-ready' ? 'text-indigo-200 font-semibold' :
+                log.type === 'db-target' ? 'text-cyan-300/80 font-mono text-[10.5px]' :
+                log.type === 'process' ? 'text-amber-300 font-semibold' :
+                log.type === 'header' ? 'text-blue-300 font-bold' :
+                'text-slate-300'
               }`}>
                 {log.text}
               </span>
@@ -290,37 +307,39 @@ export default function EtlTerminalPage({
           ))}
 
           {isProcessing && (
-            <div className="flex items-center gap-2 text-blue-600 pt-2 font-sans font-medium text-[12px]">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-              <span>Memproses validasi dan injeksi database...</span>
+            <div className="flex items-center gap-2 text-blue-400 pt-3 font-sans font-semibold text-xs animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              <span>Pipeline ETL sedang menyuntikkan data ke PostgreSQL, mohon tidak menutup jendela...</span>
             </div>
           )}
           <div ref={logEndRef} />
         </div>
 
-        {/* Progress Bar Line */}
-        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-          <div 
-            className={`h-full transition-all duration-300 ease-out ${
-              isCancelled ? 'bg-rose-500' : isDone ? 'bg-emerald-500' : 'bg-blue-600'
-            }`}
-            style={{ width: `${isCancelled ? 100 : progress}%` }}
-          />
+        {/* Progress Bar */}
+        <div className="space-y-1.5 pt-1">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-500 ease-out ${
+                isCancelled ? 'bg-rose-500' : isDone ? 'bg-emerald-500' : 'bg-blue-600'
+              }`}
+              style={{ width: `${isCancelled ? 100 : progress}%` }}
+            />
+          </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-1">
+        {/* Bottom Actions */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
           <div className="text-[11px] text-slate-500 font-medium">
             {isDone ? (
               <span className="text-emerald-600 font-bold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4" /> Proses selesai, seluruh transaksi berhasil disimpan.
+                <CheckCircle2 className="w-4 h-4" /> Seluruh data transaksi telah ter-commit ke database.
               </span>
             ) : isCancelled ? (
-              <span className="text-rose-600 font-bold flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4" /> Proses dibatalkan.
+              <span className="text-rose-600 font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4" /> Proses dibatalkan. Tidak ada data yang tersimpan.
               </span>
             ) : (
-              <span>Sedang menjalankan proses integrasi...</span>
+              <span>Sedang mengekstraksi dan memverifikasi baris data...</span>
             )}
           </div>
 
@@ -328,8 +347,11 @@ export default function EtlTerminalPage({
             {isCancelled && (
               <button
                 type="button"
-                onClick={handleBackToUpload}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors cursor-pointer text-xs"
+                onClick={() => {
+                  setIsSidebarBlocked(false);
+                  onCancel?.();
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all cursor-pointer"
               >
                 Kembali ke Upload
               </button>
@@ -344,11 +366,11 @@ export default function EtlTerminalPage({
               }}
               className={`px-5 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
                 isDone 
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs hover:-translate-y-px' 
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:-translate-y-px' 
                   : 'bg-slate-100 text-slate-400 cursor-not-allowed'
               }`}
             >
-              <span>Lihat Detail Batch</span>
+              <span>Lihat Riwayat & Detail Batch</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -356,31 +378,35 @@ export default function EtlTerminalPage({
 
       </div>
 
-      {/* Modal Batal */}
+      {/* MODAL KONFIRMASI BATAL (GITHUB-STYLE VERIFICATION) */}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0">
-                <ShieldAlert className="w-4 h-4" />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5 text-rose-600" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Batalkan Proses?</h3>
-                <p className="text-[11px] text-slate-500">Koneksi ke PostgreSQL akan segera dihentikan.</p>
+                <h3 className="text-sm font-bold text-slate-900">Batalkan Proses ETL?</h3>
+                <p className="text-[11px] text-slate-500">Koneksi ke database akan diputus dan pemrosesan dihentikan.</p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-slate-600 text-xs leading-relaxed">
-                Ketik <span className="font-mono font-bold text-slate-900">ABORT-PROCESS</span> untuk konfirmasi:
+              <p className="text-slate-700 text-xs leading-relaxed">
+                Ketik teks berikut untuk mengonfirmasi pembatalan: <br />
+                <code className="bg-rose-50 text-rose-700 font-mono font-bold px-2 py-0.5 rounded border border-rose-200 select-all inline-block mt-1">
+                  ABORT-PROCESS
+                </code>
               </p>
               <input
                 type="text"
                 autoFocus
                 value={cancelInputText}
                 onChange={(e) => setCancelInputText(e.target.value)}
-                placeholder="ABORT-PROCESS"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-rose-500 focus:bg-white transition-all"
+                placeholder="Ketik ABORT-PROCESS di sini..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white focus:border-rose-500 transition-all"
               />
             </div>
 
@@ -388,26 +414,28 @@ export default function EtlTerminalPage({
               <button
                 type="button"
                 onClick={() => setShowCancelModal(false)}
-                className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 font-semibold rounded-lg cursor-pointer text-xs"
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-semibold rounded-xl cursor-pointer text-xs"
               >
-                Lanjutkan
+                Lanjutkan Proses
               </button>
               <button
                 type="button"
                 disabled={cancelInputText.trim() !== 'ABORT-PROCESS'}
                 onClick={handleConfirmCancel}
-                className={`px-3 py-1.5 font-bold rounded-lg transition-colors text-xs cursor-pointer ${
+                className={`px-4 py-2 font-bold rounded-xl shadow-xs transition-all text-xs cursor-pointer ${
                   cancelInputText.trim() === 'ABORT-PROCESS'
                     ? 'bg-rose-600 hover:bg-rose-700 text-white'
                     : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                Hentikan
+                Hentikan Sekarang
               </button>
             </div>
+
           </div>
         </div>
       )}
+
     </div>
   );
 }

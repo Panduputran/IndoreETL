@@ -9,7 +9,7 @@ from app.database.connection import engine
 def _psql_insert_copy(table, conn, keys, data_iter):
     """
     Handler khusus Pandas to_sql untuk PostgreSQL COPY Protocol.
-    Menghasilkan kecepatan insert hingga 50x-100x lebih cepat dibanding method='multi'.
+    Menulis nilai None/NaN sebagai empty string (NULL di PostgreSQL).
     """
     dbapi_conn = conn.connection
     with dbapi_conn.cursor() as cur:
@@ -17,8 +17,13 @@ def _psql_insert_copy(table, conn, keys, data_iter):
         writer = csv.writer(s_buf, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         
         for row in data_iter:
-            # Pastikan nilai None ditulis sebagai string kosong/null CSV yang valid
-            writer.writerow([val if val is not None else '' for val in row])
+            clean_row = []
+            for val in row:
+                if val is None or pd.isna(val) or str(val).strip() in ['NaT', 'nan', 'NaN', 'None', 'NULL', '<NA>']:
+                    clean_row.append('')
+                else:
+                    clean_row.append(str(val))
+            writer.writerow(clean_row)
             
         s_buf.seek(0)
         
@@ -31,39 +36,50 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 
 def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     """
-    Insert DataFrame ke PostgreSQL dengan performa maksimal.
+    Insert DataFrame ke PostgreSQL secara universal dan dinamis murni berbasis tipe data native.
     """
-    if df.empty:
+    if df is None or df.empty:
         return 0
 
-    df = df.copy()
-    df.columns = [c.lower() for c in df.columns]
+    df_db = df.copy()
+    df_db.columns = [c.lower() for c in df_db.columns]
 
-    # --- TAMBAHKAN INI: Otomatis bulatkan semua kolom bertipe float ---
-    for col in df.select_dtypes(include=['float', 'float64']).columns:
-        # Gunakan round(0) jika ingin bulat utuh (474122), atau round(2) jika ingin 2 desimal (474122.16)
-        df[col] = df[col].round(2)
+    # 1. Format kolom tanggal/timestamp secara dinamis sesuai tipe datetime pandas
+    for col in df_db.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_db[col]):
+            df_db[col] = df_db[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+            df_db[col] = df_db[col].replace(['NaT', 'nan', 'NaN', 'None', ''], None)
 
-    # Bersihkan NaN/NaT menjadi None murni
-    df_db = df.astype(object).where(pd.notnull(df), None)
+    # 2. Bulatkan semua kolom yang bertipe float ke 2 desimal
+    for col in df_db.select_dtypes(include=['float', 'float64']).columns:
+        df_db[col] = df_db[col].round(2)
+
+    # 3. Sanitasi NaN pada kolom teks (object/string) menjadi None murni
+    for col in df_db.select_dtypes(include=['object', 'string']).columns:
+        df_db[col] = df_db[col].replace({
+            np.nan: None, "NaT": None, "nan": None, "NAN": None, 
+            "None": None, "NULL": None, "<NA>": None, "": None
+        })
+
+    table_clean = table_name.strip().lower()
 
     try:
         with engine.begin() as conn:
             df_db.to_sql(
-                name=table_name.lower(),
+                name=table_clean,
                 con=conn,
                 if_exists="append",
                 index=False,
                 method=_psql_insert_copy
             )
     except Exception as e:
-        print(f"[!] Warning: Gagal menggunakan COPY protocol ({e}). Menggunakan fallback standard chunk...")
-        total_cols = len(df.columns) if len(df.columns) > 0 else 1
+        print(f"[!] Warning COPY Protocol ({e}). Menjalankan fallback standard multi-insert...")
+        total_cols = len(df_db.columns) if len(df_db.columns) > 0 else 1
         safe_chunksize = max(500, 30000 // total_cols)
         
         with engine.begin() as conn:
             df_db.to_sql(
-                name=table_name.lower(),
+                name=table_clean,
                 con=conn,
                 if_exists="append",
                 index=False,
@@ -71,7 +87,7 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
                 method="multi"
             )
 
-    return len(df)
+    return len(df_db)
 
 
 def clean_numeric_columns(df: pd.DataFrame, numeric_cols: list) -> pd.DataFrame:

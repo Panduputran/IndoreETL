@@ -1,24 +1,24 @@
+import io
 import os
 import re
-import io
 import uuid
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 import openpyxl
 import pandas as pd
 from sqlalchemy import inspect, text
-from app.database.connection import engine
 from app.core.config import (
-    MASTER_COLUMNS_PREMI,
     MASTER_COLUMNS_CLAIM,
+    MASTER_COLUMNS_PREMI,
     SHEET_TO_TABLE_MAPPING,
 )
+from app.database.connection import engine
 from app.utils.helpers import (
-    to_snake_case,
     detect_period_from_filename,
     get_temp_file_path,
-    save_temp_file,
     read_excel_dynamic_header,
+    save_temp_file,
+    to_snake_case,
 )
 
 TEMP_UPLOAD_DIR = "temp_uploads"
@@ -72,32 +72,33 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
     """
     Mencari COB baku secara universal dari nama sheet cedant mana pun menggunakan SHEET_TO_TABLE_MAPPING.
     """
-    clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", str(sheet_name or "")).lower().strip()
-    # Hapus multiple spasi
-    clean_name = re.sub(r"\s+", " ", clean_name)
-    words = set(clean_name.split())
+    raw_str = str(sheet_name or "").lower().strip()
+    clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", raw_str)
+    clean_name = re.sub(r"\s+", " ", clean_name).strip()
 
-    # 1. Cek exact match di dictionary config
+    # 1. Cek Exact Match di dictionary config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
+    if raw_str in SHEET_TO_TABLE_MAPPING:
+        return SHEET_TO_TABLE_MAPPING[raw_str]
 
-    # 2. Cek kecocokan multi-words / frasa kunci (contoh: "non marine", "marine cargo")
-    for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
-        if keyword in clean_name:
-            return cob_target
+    # 2. Cek kecocokan Substring / Frasa Multi-kata (Urutkan dari keyword terpanjang)
+    sorted_keywords = sorted(SHEET_TO_TABLE_MAPPING.keys(), key=len, reverse=True)
+    for keyword in sorted_keywords:
+        kw_clean = keyword.lower().strip()
+        if kw_clean and (kw_clean in clean_name or kw_clean in raw_str):
+            return SHEET_TO_TABLE_MAPPING[keyword]
 
-    # 3. Cek kata per kata
-    for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
-        if keyword in words:
-            return cob_target
+    words = set(clean_name.split())
 
-    # 4. Handle sheet Quota Share (QS) umum
+    # 3. Handle sheet Quota Share (QS) umum
     if "qs" in words and any(
         k in words for k in ["klaim", "claim", "premi", "premium"]
     ):
         return "credit"
 
-    return to_snake_case(sheet_name)
+    # Fallback: Pastikan tidak ada spasi di output fallback
+    return to_snake_case(clean_name).replace(" ", "_")
 
 
 def get_target_table_name(
@@ -113,36 +114,78 @@ def get_target_table_name(
         and custom_table_name.strip()
         and custom_table_name.strip().lower() != "string"
     ):
-        return custom_table_name.strip().lower()
+        return custom_table_name.strip().lower().replace(" ", "_")
 
-    # 2. Ambil COB dari override atau deteksi via resolver sheet
+    # 2. Ambil target COB: utamakan override_cob jika ada, jika tidak pakai selected_sheet
+    raw_target = selected_sheet
     if (
         override_cob
         and override_cob.strip()
         and override_cob.strip().lower() != "string"
     ):
-        cob_suffix = override_cob.strip().lower()
-    else:
-        cob_suffix = resolve_cob_from_sheet(selected_sheet)
+        raw_target = override_cob.strip()
 
-    clean_tipe = tipe_proses.lower().strip()
-    clean_cedant = cedant.lower().strip()
+    # Lewatkan ke resolver agar frasa seperti "Non Marine" dipetakan ke "fire"
+    cob_suffix = resolve_cob_from_sheet(raw_target)
+
+    # Sanitasi karakter spasi/tanda hubung
+    cob_suffix = cob_suffix.replace(" ", "_").replace("-", "_")
+    clean_tipe = tipe_proses.lower().strip().replace(" ", "_")
+    clean_cedant = cedant.lower().strip().replace(" ", "_")
 
     # 3. Khusus ASKRIDA: format {tipe}_{cob}_{cedant}
-    if clean_cedant == "askrida":
+    if "askrida" in clean_cedant:
         if clean_tipe == "claim":
-            # Jika klaim, paksa ejaan 'kredit'
             if cob_suffix == "credit":
                 cob_suffix = "kredit"
         else:
-            # Jika premi, paksa ejaan 'credit'
             if cob_suffix == "kredit":
                 cob_suffix = "credit"
-        
+
         return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
 
     # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} (misal: claim_aca_fire)
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
+
+
+def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
+    """
+    Menentukan tipe SQL PostgreSQL secara dinamis dan semantik.
+    """
+    col_clean = str(col_name or "").lower().strip()
+
+    # 1. Aturan Semantik Baku Nilai Uang / Nominal (Prioritas #1)
+    if any(k in col_clean for k in [
+        "amount", "insured_amount", "claim", "premi", "premium", "share", "tsi", 
+        "sum_insured", "netto", "comm", "incurred", "loss", "pertanggungan", 
+        "biaya", "tarif", "rate", "gross"
+    ]):
+        return "DOUBLE PRECISION"
+
+    # 2. Aturan Tanggal / Waktu
+    if any(k in col_clean for k in ["date", "tanggal", "start", "end", "incept", "expiry", "dob", "dol", "akad", "lahir"]):
+        return "TIMESTAMP"
+
+    # 3. Aturan Durasi / Angka Bulat
+    if any(k in col_clean for k in ["year", "tahun", "bulan", "month", "usia", "age", "tenor"]):
+        return "BIGINT"
+
+    # 4. Inspeksi Tipe Aktual dari Data Series jika ada
+    if isinstance(sample_series, pd.Series) and not sample_series.dropna().empty:
+        dtype_str = str(sample_series.dtype).lower()
+        if "datetime" in dtype_str:
+            return "TIMESTAMP"
+        if "int" in dtype_str:
+            return "BIGINT"
+        if "float" in dtype_str:
+            return "DOUBLE PRECISION"
+
+    # 5. Teks Panjang
+    if any(k in col_clean for k in ["name", "insured", "bank", "location", "address", "note", "keterangan", "cause", "objek", "deskripsi"]):
+        return "TEXT"
+
+    # Default fallback untuk kode/string singkat
+    return "VARCHAR(255)"
 
 
 def check_target_table_in_db(
@@ -160,7 +203,6 @@ def check_target_table_in_db(
     sheets_map = {sheet.lower().strip(): sheet for sheet in excel_file.sheet_names}
     actual_sheet = sheets_map.get(target_sheet.lower().strip(), target_sheet)
 
-    # Memanggil dengan named parameter agar tidak tertukar posisi argumennya
     table_name = get_target_table_name(
         tipe_proses=tipe_proses,
         cedant=cedant,
@@ -207,27 +249,8 @@ def check_target_table_in_db(
 
         schema_suggestions = []
         for col in master_cols:
-            suggested_type = "VARCHAR(255)"
-            if col in df_sample.columns:
-                dtype_str = str(df_sample[col].dtype)
-
-                if "int" in dtype_str:
-                    suggested_type = "BIGINT"
-                elif "float" in dtype_str:
-                    suggested_type = "DOUBLE PRECISION"
-                elif "datetime" in dtype_str:
-                    suggested_type = "TIMESTAMP"
-
-            if col in [
-                "insured_name",
-                "location",
-                "occupation",
-                "cause_of_loss",
-                "note",
-                "objekinfo01",
-                "objekinfo02",
-            ]:
-                suggested_type = "TEXT"
+            sample_series = df_sample[col] if col in df_sample.columns else None
+            suggested_type = infer_sql_type_dynamically(col, sample_series)
 
             schema_suggestions.append(
                 {"column_name": col, "suggested_sql_type": suggested_type}
