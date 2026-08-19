@@ -81,6 +81,7 @@ MASTER_COLUMNS_CLAIM = {
 
 SHEET_TO_TABLE_MAPPING = {
     # --- ACA SPESIFIK (Non Marine & Marine Gabungan) ---
+    "Non Marine": "fire",
     "non marine": "fire",
     "non_marine": "fire",
     "marine": "cargo",

@@ -1,7 +1,9 @@
+import os
 import re
 import io
 import uuid
-import os
+import zipfile
+import xml.etree.ElementTree as ET
 import openpyxl
 import pandas as pd
 from sqlalchemy import inspect, text
@@ -40,20 +42,15 @@ def inspect_and_save_file(
     if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
         try:
             with zipfile.ZipFile(saved_path, "r") as z:
-                # Baca struktur workbook.xml
                 with z.open("xl/workbook.xml") as f_xml:
                     tree = ET.parse(f_xml)
                     root = tree.getroot()
-                    # Ambil semua atribut 'name' dari tag <sheet>
                     for elem in root.iter():
                         if elem.tag.endswith("sheet"):
                             sheet_name = elem.attrib.get("name")
                             if sheet_name:
                                 available_sheets.append(sheet_name)
         except Exception:
-            # Fallback jika zip manifest gagal
-            import openpyxl
-
             wb = openpyxl.load_workbook(saved_path, read_only=True, keep_links=False)
             available_sheets = wb.sheetnames
             wb.close()
@@ -73,58 +70,70 @@ def inspect_and_save_file(
 
 def resolve_cob_from_sheet(sheet_name: str) -> str:
     """
-    Mencari COB baku secara universal dari nama sheet cedant mana pun.
-    Mendukung matching kata kunci tanpa hardcode nama cedant.
+    Mencari COB baku secara universal dari nama sheet cedant mana pun menggunakan SHEET_TO_TABLE_MAPPING.
     """
     clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", str(sheet_name or "")).lower().strip()
+    # Hapus multiple spasi
+    clean_name = re.sub(r"\s+", " ", clean_name)
     words = set(clean_name.split())
 
     # 1. Cek exact match di dictionary config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
 
-    # 2. Cek kecocokan kata kunci COB
+    # 2. Cek kecocokan multi-words / frasa kunci (contoh: "non marine", "marine cargo")
     for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
-        if " " in keyword and keyword in clean_name:
-            return cob_target
-        elif keyword in words:
+        if keyword in clean_name:
             return cob_target
 
-    # 3. Handle sheet Quota Share (QS) umum
+    # 3. Cek kata per kata
+    for keyword, cob_target in SHEET_TO_TABLE_MAPPING.items():
+        if keyword in words:
+            return cob_target
+
+    # 4. Handle sheet Quota Share (QS) umum
     if "qs" in words and any(
         k in words for k in ["klaim", "claim", "premi", "premium"]
     ):
-        return "kredit"
+        return "credit"
 
     return to_snake_case(sheet_name)
 
 
-def get_target_table_name(tipe_proses: str, cedant: str, selected_sheet: str, override_cob: str = None, custom_table_name: str = None) -> str:
-    if custom_table_name:
-        return custom_table_name.lower()
-    
-    # 1. Jika ada override_cob (misal: "FIRE"), gunakan COB tersebut
-    if override_cob:
-        cob_suffix = override_cob.lower()
-    else:
-        # 2. Deteksi COB dari nama sheet
-        s = selected_sheet.upper()
-        if 'FIRE' in s or 'PROPERTY' in s:
-            cob_suffix = 'fire'
-        elif 'ENG' in s or 'ENGINEERING' in s:
-            cob_suffix = 'engineering'
-        elif 'CARGO' in s:
-            cob_suffix = 'cargo'
-        elif 'HULL' in s:
-            cob_suffix = 'hull'
-        elif 'MOTOR' in s or 'KENDARAAN' in s:
-            cob_suffix = 'motor'
-        elif 'KREDIT' in s or 'CREDIT' in s:
-            cob_suffix = 'credit'
-        else:
-            cob_suffix = re.sub(r'[^a-zA-Z0-9]', '_', selected_sheet.lower()).strip('_')
+def get_target_table_name(
+    tipe_proses: str,
+    cedant: str,
+    selected_sheet: str,
+    override_cob: str = None,
+    custom_table_name: str = None,
+) -> str:
+    # 1. Jika user mengisi custom_table_name secara valid, prioritaskan itu
+    if (
+        custom_table_name
+        and custom_table_name.strip()
+        and custom_table_name.strip().lower() != "string"
+    ):
+        return custom_table_name.strip().lower()
 
-    return f"{tipe_proses.lower()}_{cedant.lower()}_{cob_suffix}"
+    # 2. Ambil COB dari override atau deteksi via resolver sheet
+    if (
+        override_cob
+        and override_cob.strip()
+        and override_cob.strip().lower() != "string"
+    ):
+        cob_suffix = override_cob.strip().lower()
+    else:
+        cob_suffix = resolve_cob_from_sheet(selected_sheet)
+
+    clean_tipe = tipe_proses.lower().strip()
+    clean_cedant = cedant.lower().strip()
+
+    # 3. Khusus ASKRIDA: format {tipe}_{cob}_{cedant} -> claim_kredit_askrida
+    if clean_cedant == "askrida":
+        return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
+
+    # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} -> claim_aca_fire
+    return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
 
 
 def check_target_table_in_db(
@@ -132,21 +141,26 @@ def check_target_table_in_db(
     tipe_proses: str,
     cedant: str,
     target_sheet: str,
+    override_cob: str = None,
     custom_table_name: str = None,
 ) -> dict:
     file_path = get_temp_file_path(file_id)
-    cedant_key = cedant.lower()
+    cedant_key = cedant.lower().strip()
 
     excel_file = pd.ExcelFile(file_path)
     sheets_map = {sheet.lower().strip(): sheet for sheet in excel_file.sheet_names}
     actual_sheet = sheets_map.get(target_sheet.lower().strip(), target_sheet)
 
-    # Oper custom_table_name ke helper
+    # Memanggil dengan named parameter agar tidak tertukar posisi argumennya
     table_name = get_target_table_name(
-        tipe_proses, cedant, actual_sheet, custom_table_name
+        tipe_proses=tipe_proses,
+        cedant=cedant,
+        selected_sheet=actual_sheet,
+        override_cob=override_cob,
+        custom_table_name=custom_table_name,
     )
 
-    if tipe_proses.lower() == "claim":
+    if tipe_proses.lower().strip() == "claim":
         master_cols = MASTER_COLUMNS_CLAIM.get(cedant_key, [])
     else:
         master_cols = MASTER_COLUMNS_PREMI.get(cedant_key, [])
@@ -201,6 +215,8 @@ def check_target_table_in_db(
                 "occupation",
                 "cause_of_loss",
                 "note",
+                "objekinfo01",
+                "objekinfo02",
             ]:
                 suggested_type = "TEXT"
 
@@ -246,5 +262,5 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     return {
         "status": "success",
         "table_name": table_name,
-        "message": f"Tabel '{table_name}' berhasil dibuat murni murni dari kolom Excel!",
+        "message": f"Tabel '{table_name}' berhasil dibuat murni dari kolom Excel!",
     }

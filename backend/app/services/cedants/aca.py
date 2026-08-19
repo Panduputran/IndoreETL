@@ -3,19 +3,33 @@ import pandas as pd
 from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM
 from app.utils.helpers import read_excel_dynamic_header, to_snake_case, validate_dates
 
+def format_id_column(val):
+    """Konversi nilai ID/Nomor agar tidak menjadi eksponensial (e+16) atau berakhiran .0"""
+    if pd.isna(val):
+        return np.nan
+    if isinstance(val, (float, np.floating)):
+        if np.isnan(val) or np.isinf(val):
+            return np.nan
+        if val.is_integer():
+            return f"{int(val)}"
+        return f"{val:.0f}"
+    val_str = str(val).strip()
+    if val_str.lower() in ["nan", "none", "nat", "null", ""]:
+        return np.nan
+    return val_str.replace(".0", "") if val_str.endswith(".0") else val_str
+
 class ACAETL:
     """Modul khusus pemrosesan data ACA (Premi & Klaim)"""
 
     @staticmethod
     def process_premi(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_PREMI.get("aca", [])
-        
-        # 1. Baca Excel menggunakan dynamic header reader yang sudah diperbaiki
+
+        # 1. Baca Excel menggunakan dynamic header reader
         df = read_excel_dynamic_header(file_path, target_sheet)
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
         # 2. Mapping Alias Header Excel Premi ACA
-        # Mapping Alias Header Excel Premi ACA
         rename_mapping = {
             'reinsurer_id': 'id',
             'reinsurer_name': 'name',
@@ -59,11 +73,10 @@ class ACAETL:
         df.rename(columns=rename_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 3. Sanitasi Kolom ID & String (Hilangkan format ilmiah .0)
+        # 3. Sanitasi Kolom ID & String (Aman dari .0 dan notasi ilmiah)
         for id_col in ['policyno', 'endorsement', 'id', 'treatytype', 'class_of_business', 'treatyyear']:
             if id_col in df.columns:
-                df[id_col] = df[id_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                df[id_col] = df[id_col].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
+                df[id_col] = df[id_col].apply(format_id_column)
 
         df['period'] = periode_lengkap
 
@@ -105,8 +118,8 @@ class ACAETL:
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_CLAIM.get("aca", [])
-        
-        # 1. Baca Excel menggunakan dynamic header reader yang sudah diperbaiki
+
+        # 1. Baca Excel menggunakan dynamic header reader
         df = read_excel_dynamic_header(file_path, target_sheet)
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
@@ -149,11 +162,11 @@ class ACAETL:
         df.rename(columns=rename_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 3. Sanitasi Kolom ID & String (Hilangkan format ilmiah .0)
-        for id_col in ['claim_no', 'policy_number', 'reinsurer_id', 'treaty_id', 'class_of_business', 'treaty_year']:
+        # 3. Sanitasi Kolom ID & String (Menjaga digit claim_no/policy_number tetap utuh tanpa format e+16)
+        id_cols = ['claim_no', 'policy_number', 'reinsurer_id', 'treaty_id', 'class_of_business', 'treaty_year']
+        for id_col in id_cols:
             if id_col in df.columns:
-                df[id_col] = df[id_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                df[id_col] = df[id_col].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
+                df[id_col] = df[id_col].apply(format_id_column)
 
         df['period'] = periode_lengkap
 

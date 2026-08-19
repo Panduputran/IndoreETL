@@ -95,17 +95,23 @@ async def create_table_endpoint(payload: CreateTableRequest):
 def process_etl(payload: ProcessETLRequest):
     try:
         file_path = get_temp_file_path(payload.file_id)
-        periode_lengkap = f"{payload.kuartal.upper()} {payload.tahun}"
+        periode_lengkap = f"{payload.kuartal.upper().strip()} {payload.tahun.strip()}"
 
         # 1. Eksekusi Orchestrator Factory
         df_clean = run_etl_service(
-            cedant=payload.cedant,
-            tipe_proses=payload.tipe_proses,
+            cedant=payload.cedant.strip().lower(),
+            tipe_proses=payload.tipe_proses.strip().lower(),
             file_path=file_path,
             target_sheet=payload.target_sheet,
             periode_lengkap=periode_lengkap,
             override_cob=payload.override_cob,
         )
+
+        # Validasi jika dataframe kosong sebelum insert
+        if df_clean is None or df_clean.empty:
+            raise ValueError(
+                f"Dataframe kosong setelah diproses! Periksa target sheet '{payload.target_sheet}' atau format file."
+            )
 
         # 2. Hapus duplikasi jika dicentang
         if payload.deduplicate:
@@ -123,7 +129,9 @@ def process_etl(payload: ProcessETLRequest):
         # 4. Insert bulk ke PostgreSQL
         insert_data_to_db(df_clean, target_table)
 
-        preview = clean_dict_for_json(df_clean.head(1).to_dict(orient="records"))
+        # Siapkan sample preview 1 baris pertama yang aman untuk JSON
+        sample_records = df_clean.head(1).to_dict(orient="records")
+        preview = clean_dict_for_json(sample_records)
 
         return {
             "status": "success",
@@ -131,11 +139,14 @@ def process_etl(payload: ProcessETLRequest):
             "detail": {
                 "period": periode_lengkap,
                 "cedant": payload.cedant,
+                "target_sheet": payload.target_sheet,
                 "target_table": target_table,
                 "total_rows_inserted": len(df_clean),
                 "sample_preview": preview,
             },
         }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal memproses ETL: {str(e)}")
 
@@ -164,6 +175,7 @@ def process_etl_batch(payloads: List[ProcessETLRequest]):  # Gunakan 'def'
                 tipe_proses=item.tipe_proses,
                 cedant=item.cedant,
                 selected_sheet=item.target_sheet,
+                override_cob=item.override_cob,
                 custom_table_name=item.custom_table_name,
             )
 
