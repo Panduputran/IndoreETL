@@ -38,44 +38,47 @@ def sanitize_column_name(col_name: str) -> str:
 
 
 def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
-    """Pemetaan tipe data universal yang akurat untuk semua cedant."""
+    """Pemetaan tipe data universal: prioritaskan ID/Tanggal/Uang, sisanya TEXT."""
     col_clean = sanitize_column_name(col_name)
 
-    # 1. Identitas / Teks Pendek / Label Periode -> Wajib VARCHAR
-    id_list = [
-        "policyno", "policy_no", "endorsement", "id", "treatytype", "treaty_id",
-        "treaty_year", "treatyyear", "class_of_business", "cob", "type_of_cover",
-        "reinsured", "name", "currency", "production", "period", "no", "number", 
-        "code", "kode", "claim_no", "register_no", "reff_of_no_bordereaux", "insured_name"
-    ]
-    if col_clean in id_list or col_clean == "period":
-        return "VARCHAR(255)"
-
-    # 2. Tanggal / Waktu -> TIMESTAMP
+    # 1. Tanggal / Waktu -> TIMESTAMP
     date_list = [
         "sdate", "edate", "sdate_master_policy", "date_of_loss", "start_period", 
         "end_period", "period_of_insurance_start", "period_of_insurance_end", 
-        "underwriting_date", "inception_date", "expiry_date", "tanggal_akad", "dob", "dol"
+        "underwriting_date", "inception_date", "expiry_date", "tanggal_akad", 
+        "dob", "dol", "date_of_accident", "date_of_claim"
     ]
-    if col_clean in date_list or any(k in col_clean for k in ["date", "tanggal", "incept", "expiry"]):
+    if col_clean in date_list or any(k in col_clean for k in ["date", "tanggal", "incept", "expiry", "_at"]):
         return "TIMESTAMP"
 
-    # 3. Nilai Uang / Angka / Desimal / Share -> DOUBLE PRECISION (Format 123)
+    # 2. Nilai Uang / Angka / Desimal / Share / Rate -> DOUBLE PRECISION (123)
     num_list = [
         "tsi_100", "ourshare", "exposure", "premium", "commission", "net", "roe",
         "tsi", "sum_insured", "gross_premium", "ri_comm", "net_premium",
         "our_share_percent", "reinsurer_share_percent", "claim_amount_100", "reinsurance_claim",
         "nilai_pertanggungan", "premi_indore_share", "reindo_netto", "incurred", "loss",
-        "reindo_sum_insured", "reindo_ri_comm", "biaya_administrasi", "rate"
+        "reindo_sum_insured", "reindo_ri_comm", "biaya_administrasi", "rate",
+        "claim_amount", "paid_claim", "outstanding_claim", "deductible", "salvage", "fac_tsi", "fac_premium"
     ]
-    if col_clean in num_list or any(k in col_clean for k in ["amount", "claim", "premi", "premium", "comm", "share", "rate", "tarif", "biaya", "tsi", "netto", "gross", "exposure", "roe"]):
+    if col_clean in num_list or any(k in col_clean for k in ["amount", "claim", "premi", "premium", "comm", "share", "rate", "tarif", "biaya", "tsi", "netto", "gross", "exposure", "roe", "salvage"]):
         return "DOUBLE PRECISION"
 
-    # 4. Teks Deskripsi Panjang -> TEXT
-    if any(k in col_clean for k in ["objek", "info", "keterangan", "deskripsi", "note", "cause", "address", "location", "alasan"]):
-        return "TEXT"
+    # 3. Durasi / Angka Bulat -> BIGINT
+    if any(k in col_clean for k in ["tahun", "bulan", "usia", "age", "tenor"]):
+        return "BIGINT"
 
-    return "VARCHAR(255)"
+    # 4. Nomor Identitas / Kode Pendek / Label Periode -> VARCHAR(255)
+    id_list = [
+        "policyno", "policy_no", "endorsement", "id", "treatytype", "treaty_id",
+        "treaty_year", "treatyyear", "class_of_business", "cob", "type_of_cover",
+        "currency", "period", "no", "number", "code", "kode", "claim_no", 
+        "register_no", "reff_of_no_bordereaux", "no_peserta", "no_polis", "status"
+    ]
+    if col_clean in id_list or col_clean == "period":
+        return "VARCHAR(255)"
+
+    # 5. SEMUA KOLOM TEKS LAINNYA (occupation, insured_name, address, remarks, dll) -> TEXT (Bebas Batas Karakter)
+    return "TEXT"
 
 
 def inspect_and_save_file(
