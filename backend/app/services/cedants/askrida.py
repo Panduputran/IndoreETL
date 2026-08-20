@@ -117,15 +117,6 @@ class AskridaETL(BaseCedantETL):
             df_data.rename(columns=rename_map, inplace=True)
             df_data = df_data.loc[:, ~df_data.columns.duplicated()]
 
-            if "usia_saat_akad_tahun" in df_data.columns:
-                df_data["usia_saat_akad_tahun"] = (
-                    df_data["usia_saat_akad_tahun"]
-                    .astype(str)
-                    .str.replace(r'\.0$', '', regex=True)
-                    .str.strip()
-                    .replace(['nan', 'None', 'NaN', 'NaT', '<NA>', ''], np.nan)
-                )
-
             df_data["cob"] = "CREDIT"
             df_data["reff_of_no_bordereaux"] = reff_bordereaux
             df_data["period"] = periode_lengkap
@@ -136,15 +127,23 @@ class AskridaETL(BaseCedantETL):
                     df_data[col_name] = np.nan
 
             df_data = df_data[master_cols]
-            df_data = df_data.dropna(subset=["policy_number", "insured_name"], how="all")
-            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
-            
-            p_str = df_data["policy_number"].astype(str).str.upper().str.strip()
-            name_str = df_data["insured_name"].astype(str).str.upper().str.strip()
-            
-            df_data = df_data[~p_str.str.match(trash_exact_pattern, na=False)]
-            df_data = df_data[~name_str.str.match(trash_exact_pattern, na=False)]
-            df_data = df_data.dropna(subset=["tanggal_akad", "period_of_insurance_start"], how="all")
+
+            # -------------------------------------------------------------
+            # FILTER DATA VALID (ZERO-DROP: AMAN UNTUK BARIS 58.732)
+            # -------------------------------------------------------------
+            # 1. Bersihkan string spasi kosong
+            for check_col in ["policy_number", "insured_name", "no"]:
+                if check_col in df_data.columns:
+                    df_data[check_col] = df_data[check_col].replace(r'^\s*$', np.nan, regex=True)
+
+            # 2. Hanya buang baris jika nomor polis, nama, dan no urut KETIGA-TIGANYA kosong murni
+            df_data = df_data.dropna(subset=["policy_number", "insured_name", "no"], how="all")
+
+            # 3. Hanya buang baris teks rekapitulasi/total
+            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY)\s*$'
+            if "policy_number" in df_data.columns:
+                p_str = df_data["policy_number"].astype(str).str.upper().str.strip()
+                df_data = df_data[~p_str.str.match(trash_exact_pattern, na=False)]
 
             if not df_data.empty:
                 all_data.append(df_data)
@@ -152,7 +151,64 @@ class AskridaETL(BaseCedantETL):
         if not all_data:
             return pd.DataFrame(columns=MASTER_COLUMNS_PREMI["askrida"])
 
-        return pd.concat(all_data, ignore_index=True)
+        df_final = pd.concat(all_data, ignore_index=True)
+
+        # -------------------------------------------------------------
+        # SANITASI TIPE DATA PREMI SECARA PRESISI & ANTI NOTASI SAINTIFIK
+        # -------------------------------------------------------------
+        
+        # 1. Identitas (policy_number, no)
+        for id_col in ['policy_number', 'no']:
+            if id_col in df_final.columns:
+                df_final[id_col] = df_final[id_col].apply(
+                    lambda x: f"{int(x)}" if isinstance(x, (int, float)) and pd.notna(x) and not np.isnan(x) and x % 1 == 0
+                    else (f"{x:.0f}" if isinstance(x, float) and pd.notna(x) and not np.isnan(x) else str(x if pd.notna(x) else ""))
+                )
+                df_final[id_col] = df_final[id_col].str.replace(r'\.0$', '', regex=True).str.strip()
+                df_final[id_col] = df_final[id_col].replace(['nan', 'None', 'NaN', '0', ''], None)
+
+        # 2. Tanggal (tanggal_akad, period start & end, tanggal_lahir)
+        date_cols = ['tanggal_akad', 'period_of_insurance_start', 'period_of_insurance_end', 'tanggal_lahir']
+        for col in date_cols:
+            if col in df_final.columns:
+                df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN'], np.nan)
+                df_final[col] = pd.to_datetime(df_final[col], errors='coerce')
+
+        # 3. Kolom Uang / Nominal (Float Murni)
+        numeric_cols = [
+            'nilai_pertanggungan', 'premi_original', 'reindo_sum_insured',
+            'premi_indore_share', 'reindo_ri_comm', 'reindo_netto',
+            '100_reinsurer_sum_insured', 'premi_reinsurer_share',
+            '100_reinsurer_ri_comm', '100_reinsurer_netto'
+        ]
+        for col in numeric_cols:
+            if col in df_final.columns:
+                if df_final[col].dtype == object:
+                    df_final[col] = (
+                        df_final[col]
+                        .astype(str)
+                        .str.replace(r'[^\d.-]', '', regex=True)
+                        .replace('', '0')
+                    )
+                df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0.0)
+
+        # 4. Integer (usia, uw_year)
+        int_cols = ['usia_saat_akad_tahun', 'uw_year']
+        for col in int_cols:
+            if col in df_final.columns:
+                df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN', '', None], np.nan)
+                df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
+
+        # 5. String / Teks
+        exclude_from_str = date_cols + numeric_cols + int_cols + ['policy_number', 'no']
+        str_target_cols = [c for c in df_final.columns if c not in exclude_from_str]
+
+        for col in str_target_cols:
+            df_final[col] = df_final[col].astype(str).str.upper().str.strip()
+            df_final[col] = df_final[col].replace(['NAN', 'NONE', 'NULL', '<NA>', '0', '0.0', ''], None)
+
+        df_final = df_final.where(pd.notnull(df_final), None)
+        return df_final
 
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
@@ -354,7 +410,7 @@ class AskridaETL(BaseCedantETL):
                 df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN', '', None], np.nan)
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
 
-        # 6. Kolom Teks / Deskripsi (Dijalankan SETELAH date_cols, numeric_cols, dan int_cols siap)
+        # 6. Kolom Teks / Deskripsi
         exclude_from_str = date_cols + numeric_cols + int_cols + ['policy_number', 'claim_reff_number', 'no']
         str_target_cols = [c for c in df_final.columns if c not in exclude_from_str]
 

@@ -147,14 +147,10 @@ def get_target_table_name(
     # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} (misal: claim_aca_fire)
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
 
-
 def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
-    """
-    Menentukan tipe SQL PostgreSQL secara dinamis dan semantik.
-    """
     col_clean = str(col_name or "").lower().strip()
 
-    # 1. Aturan Semantik Baku Nilai Uang / Nominal (Prioritas #1)
+    # 1. Aturan Universal Nilai Uang / Nominal / Klaim / Premi
     if any(k in col_clean for k in [
         "amount", "insured_amount", "claim", "premi", "premium", "share", "tsi", 
         "sum_insured", "netto", "comm", "incurred", "loss", "pertanggungan", 
@@ -162,15 +158,15 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
     ]):
         return "DOUBLE PRECISION"
 
-    # 2. Aturan Tanggal / Waktu
+    # 2. Tanggal / Waktu
     if any(k in col_clean for k in ["date", "tanggal", "start", "end", "incept", "expiry", "dob", "dol", "akad", "lahir"]):
         return "TIMESTAMP"
 
-    # 3. Aturan Durasi / Angka Bulat
+    # 3. Durasi / Angka Bulat
     if any(k in col_clean for k in ["year", "tahun", "bulan", "month", "usia", "age", "tenor"]):
         return "BIGINT"
 
-    # 4. Inspeksi Tipe Aktual dari Data Series jika ada
+    # 4. Cek Dtype Sample jika kolom lolos dari aturan semantik
     if isinstance(sample_series, pd.Series) and not sample_series.dropna().empty:
         dtype_str = str(sample_series.dtype).lower()
         if "datetime" in dtype_str:
@@ -180,13 +176,11 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
         if "float" in dtype_str:
             return "DOUBLE PRECISION"
 
-    # 5. Teks Panjang
+    # 5. Teks Deskripsi
     if any(k in col_clean for k in ["name", "insured", "bank", "location", "address", "note", "keterangan", "cause", "objek", "deskripsi"]):
         return "TEXT"
 
-    # Default fallback untuk kode/string singkat
     return "VARCHAR(255)"
-
 
 def check_target_table_in_db(
     file_id: str,
