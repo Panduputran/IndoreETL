@@ -4,88 +4,99 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import text, inspect
 from app.database.connection import engine
+from app.services.inspector_service import infer_sql_type_dynamically, sanitize_column_name
 
 
 def _psql_insert_copy(table, conn, keys, data_iter):
-    """
+    r"""
     Handler khusus Pandas to_sql untuk PostgreSQL COPY Protocol.
-    Menulis nilai None/NaN sebagai empty string (NULL di PostgreSQL).
+    Menulis nilai None/NaN/kosong sebagai string khusus '\N' (NULL standar PostgreSQL COPY).
     """
     dbapi_conn = conn.connection
     with dbapi_conn.cursor() as cur:
         s_buf = io.StringIO()
-        writer = csv.writer(s_buf, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         
         for row in data_iter:
             clean_row = []
             for val in row:
-                if val is None or pd.isna(val) or str(val).strip() in ['NaT', 'nan', 'NaN', 'None', 'NULL', '<NA>']:
-                    clean_row.append('')
+                if val is None or pd.isna(val) or str(val).strip() in ['NaT', 'nan', 'NaN', 'None', 'NULL', '<NA>', '']:
+                    clean_row.append(r'\N')
                 else:
-                    clean_row.append(str(val))
-            writer.writerow(clean_row)
+                    # Bersihkan tab dan newline agar tidak merusak delimiter TSV
+                    clean_val = str(val).replace('\t', ' ').replace('\r', '').replace('\n', ' ').strip()
+                    clean_row.append(clean_val)
+            s_buf.write('\t'.join(clean_row) + '\n')
             
         s_buf.seek(0)
         
         columns = ', '.join([f'"{k}"' for k in keys])
         table_name = f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
         
-        sql = f"COPY {table_name} ({columns}) FROM STDIN WITH (FORMAT CSV, HEADER FALSE, NULL '')"
+        sql = f"COPY {table_name} ({columns}) FROM STDIN WITH (FORMAT TEXT, NULL '\\N')"
         cur.copy_expert(sql=sql, file=s_buf)
+
+
+def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
+    """
+    Membuat tabel dengan tipe data SQL yang tepat (DOUBLE PRECISION, TIMESTAMP, BIGINT, VARCHAR)
+    SEBELUM df.to_sql dieksekusi agar tidak default ke TEXT / VARCHAR.
+    """
+    insp = inspect(engine)
+    if not insp.has_table(table_name):
+        column_definitions = []
+        for col in df.columns:
+            safe_col = sanitize_column_name(col)
+            sample_series = df[col]
+            sql_type = infer_sql_type_dynamically(col, sample_series)
+            column_definitions.append(f'"{safe_col}" {sql_type}')
+
+        create_table_query = f"""
+        CREATE TABLE IF NOT EXISTS "{table_name}" (
+            {", ".join(column_definitions)}
+        );
+        """
+        with engine.begin() as conn:
+            conn.execute(text(create_table_query))
 
 
 def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     """
-    Insert DataFrame ke PostgreSQL secara universal dan dinamis murni berbasis tipe data native.
+    Insert DataFrame ke PostgreSQL secara universal dan dinamis.
     """
     if df is None or df.empty:
         return 0
 
     df_db = df.copy()
-    df_db.columns = [c.lower() for c in df_db.columns]
+    df_db.columns = [sanitize_column_name(c) for c in df_db.columns]
+    table_clean = table_name.strip().lower()
 
-    # 1. Format kolom tanggal/timestamp secara dinamis sesuai tipe datetime pandas
+    # 1. Pastikan skema tabel dibuat dengan tipe data SQL yang presisi
+    ensure_table_schema_exists(df_db, table_clean)
+
+    # 2. Format kolom tanggal/timestamp
     for col in df_db.columns:
         if pd.api.types.is_datetime64_any_dtype(df_db[col]):
             df_db[col] = df_db[col].dt.strftime('%Y-%m-%d %H:%M:%S')
-            df_db[col] = df_db[col].replace(['NaT', 'nan', 'NaN', 'None', ''], None)
+            df_db[col] = df_db[col].replace(['NaT', 'nan', 'NaN', 'None', '<NA>', ''], np.nan)
 
-    # 2. Bulatkan semua kolom yang bertipe float ke 2 desimal
+    # 3. Bulatkan kolom float ke 2 desimal
     for col in df_db.select_dtypes(include=['float', 'float64']).columns:
         df_db[col] = df_db[col].round(2)
 
-    # 3. Sanitasi NaN pada kolom teks (object/string) menjadi None murni
-    for col in df_db.select_dtypes(include=['object', 'string']).columns:
-        df_db[col] = df_db[col].replace({
-            np.nan: None, "NaT": None, "nan": None, "NAN": None, 
-            "None": None, "NULL": None, "<NA>": None, "": None
-        })
+    # 4. Sanitasi nilai null murni
+    df_db = df_db.replace({
+        'NaT': None, 'nan': None, 'NaN': None, 
+        'None': None, 'NULL': None, '<NA>': None, '': None
+    })
 
-    table_clean = table_name.strip().lower()
-
-    try:
-        with engine.begin() as conn:
-            df_db.to_sql(
-                name=table_clean,
-                con=conn,
-                if_exists="append",
-                index=False,
-                method=_psql_insert_copy
-            )
-    except Exception as e:
-        print(f"[!] Warning COPY Protocol ({e}). Menjalankan fallback standard multi-insert...")
-        total_cols = len(df_db.columns) if len(df_db.columns) > 0 else 1
-        safe_chunksize = max(500, 30000 // total_cols)
-        
-        with engine.begin() as conn:
-            df_db.to_sql(
-                name=table_clean,
-                con=conn,
-                if_exists="append",
-                index=False,
-                chunksize=safe_chunksize,
-                method="multi"
-            )
+    with engine.begin() as conn:
+        df_db.to_sql(
+            name=table_clean,
+            con=conn,
+            if_exists="append",
+            index=False,
+            method=_psql_insert_copy
+        )
 
     return len(df_db)
 

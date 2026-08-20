@@ -25,20 +25,71 @@ TEMP_UPLOAD_DIR = "temp_uploads"
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
 
+def sanitize_column_name(col_name: str) -> str:
+    """Sanitasi nama kolom SQL: snake_case, huruf kecil, dan angka di awal dipindah ke belakang."""
+    col_name = str(col_name or "").strip().lower()
+    col_name = to_snake_case(col_name)
+    col_name = re.sub(r'[^a-z0-9_]', '', col_name)
+    match = re.match(r"^(\d+)_(.+)$", col_name)
+    if match:
+        number_part, text_part = match.groups()
+        return f"{text_part}_{number_part}"
+    return col_name
+
+
+def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
+    """Pemetaan tipe data universal yang akurat untuk semua cedant."""
+    col_clean = sanitize_column_name(col_name)
+
+    # 1. Identitas / Teks Pendek / Label Periode -> Wajib VARCHAR
+    id_list = [
+        "policyno", "policy_no", "endorsement", "id", "treatytype", "treaty_id",
+        "treaty_year", "treatyyear", "class_of_business", "cob", "type_of_cover",
+        "reinsured", "name", "currency", "production", "period", "no", "number", 
+        "code", "kode", "claim_no", "register_no", "reff_of_no_bordereaux", "insured_name"
+    ]
+    if col_clean in id_list or col_clean == "period":
+        return "VARCHAR(255)"
+
+    # 2. Tanggal / Waktu -> TIMESTAMP
+    date_list = [
+        "sdate", "edate", "sdate_master_policy", "date_of_loss", "start_period", 
+        "end_period", "period_of_insurance_start", "period_of_insurance_end", 
+        "underwriting_date", "inception_date", "expiry_date", "tanggal_akad", "dob", "dol"
+    ]
+    if col_clean in date_list or any(k in col_clean for k in ["date", "tanggal", "incept", "expiry"]):
+        return "TIMESTAMP"
+
+    # 3. Nilai Uang / Angka / Desimal / Share -> DOUBLE PRECISION (Format 123)
+    num_list = [
+        "tsi_100", "ourshare", "exposure", "premium", "commission", "net", "roe",
+        "tsi", "sum_insured", "gross_premium", "ri_comm", "net_premium",
+        "our_share_percent", "reinsurer_share_percent", "claim_amount_100", "reinsurance_claim",
+        "nilai_pertanggungan", "premi_indore_share", "reindo_netto", "incurred", "loss",
+        "reindo_sum_insured", "reindo_ri_comm", "biaya_administrasi", "rate"
+    ]
+    if col_clean in num_list or any(k in col_clean for k in ["amount", "claim", "premi", "premium", "comm", "share", "rate", "tarif", "biaya", "tsi", "netto", "gross", "exposure", "roe"]):
+        return "DOUBLE PRECISION"
+
+    # 4. Teks Deskripsi Panjang -> TEXT
+    if any(k in col_clean for k in ["objek", "info", "keterangan", "deskripsi", "note", "cause", "address", "location", "alasan"]):
+        return "TEXT"
+
+    return "VARCHAR(255)"
+
+
 def inspect_and_save_file(
     file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
 ) -> dict:
     file_id = f"file_{uuid.uuid4().hex}"
     saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
 
-    # 1. Simpan file fisik ke disk
     with open(saved_path, "wb") as f:
         f.write(file_bytes)
 
     available_sheets = []
     lower_name = filename.lower()
 
-    # 2. Ekstraksi nama sheet instan via Zip Manifest (< 0.05 detik)
     if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
         try:
             with zipfile.ZipFile(saved_path, "r") as z:
@@ -54,7 +105,6 @@ def inspect_and_save_file(
             wb = openpyxl.load_workbook(saved_path, read_only=True, keep_links=False)
             available_sheets = wb.sheetnames
             wb.close()
-
     elif lower_name.endswith(".xls"):
         excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
         available_sheets = excel_obj.sheet_names
@@ -69,20 +119,15 @@ def inspect_and_save_file(
 
 
 def resolve_cob_from_sheet(sheet_name: str) -> str:
-    """
-    Mencari COB baku secara universal dari nama sheet cedant mana pun menggunakan SHEET_TO_TABLE_MAPPING.
-    """
     raw_str = str(sheet_name or "").lower().strip()
     clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", raw_str)
     clean_name = re.sub(r"\s+", " ", clean_name).strip()
 
-    # 1. Cek Exact Match di dictionary config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
     if raw_str in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[raw_str]
 
-    # 2. Cek kecocokan Substring / Frasa Multi-kata (Urutkan dari keyword terpanjang)
     sorted_keywords = sorted(SHEET_TO_TABLE_MAPPING.keys(), key=len, reverse=True)
     for keyword in sorted_keywords:
         kw_clean = keyword.lower().strip()
@@ -90,14 +135,9 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
             return SHEET_TO_TABLE_MAPPING[keyword]
 
     words = set(clean_name.split())
-
-    # 3. Handle sheet Quota Share (QS) umum
-    if "qs" in words and any(
-        k in words for k in ["klaim", "claim", "premi", "premium"]
-    ):
+    if "qs" in words and any(k in words for k in ["klaim", "claim", "premi", "premium"]):
         return "credit"
 
-    # Fallback: Pastikan tidak ada spasi di output fallback
     return to_snake_case(clean_name).replace(" ", "_")
 
 
@@ -108,32 +148,18 @@ def get_target_table_name(
     override_cob: str = None,
     custom_table_name: str = None,
 ) -> str:
-    # 1. Jika user mengisi custom_table_name secara valid, prioritaskan itu
-    if (
-        custom_table_name
-        and custom_table_name.strip()
-        and custom_table_name.strip().lower() != "string"
-    ):
+    if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() != "string":
         return custom_table_name.strip().lower().replace(" ", "_")
 
-    # 2. Ambil target COB: utamakan override_cob jika ada, jika tidak pakai selected_sheet
     raw_target = selected_sheet
-    if (
-        override_cob
-        and override_cob.strip()
-        and override_cob.strip().lower() != "string"
-    ):
+    if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
         raw_target = override_cob.strip()
 
-    # Lewatkan ke resolver agar frasa seperti "Non Marine" dipetakan ke "fire"
     cob_suffix = resolve_cob_from_sheet(raw_target)
-
-    # Sanitasi karakter spasi/tanda hubung
     cob_suffix = cob_suffix.replace(" ", "_").replace("-", "_")
     clean_tipe = tipe_proses.lower().strip().replace(" ", "_")
     clean_cedant = cedant.lower().strip().replace(" ", "_")
 
-    # 3. Khusus ASKRIDA: format {tipe}_{cob}_{cedant}
     if "askrida" in clean_cedant:
         if clean_tipe == "claim":
             if cob_suffix == "credit":
@@ -141,46 +167,10 @@ def get_target_table_name(
         else:
             if cob_suffix == "kredit":
                 cob_suffix = "credit"
-
         return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
 
-    # 4. Standar Cedant Lain: format {tipe}_{cedant}_{cob} (misal: claim_aca_fire)
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
 
-def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
-    col_clean = str(col_name or "").lower().strip()
-
-    # 1. Aturan Universal Nilai Uang / Nominal / Klaim / Premi
-    if any(k in col_clean for k in [
-        "amount", "insured_amount", "claim", "premi", "premium", "share", "tsi", 
-        "sum_insured", "netto", "comm", "incurred", "loss", "pertanggungan", 
-        "biaya", "tarif", "rate", "gross"
-    ]):
-        return "DOUBLE PRECISION"
-
-    # 2. Tanggal / Waktu
-    if any(k in col_clean for k in ["date", "tanggal", "start", "end", "incept", "expiry", "dob", "dol", "akad", "lahir"]):
-        return "TIMESTAMP"
-
-    # 3. Durasi / Angka Bulat
-    if any(k in col_clean for k in ["year", "tahun", "bulan", "month", "usia", "age", "tenor"]):
-        return "BIGINT"
-
-    # 4. Cek Dtype Sample jika kolom lolos dari aturan semantik
-    if isinstance(sample_series, pd.Series) and not sample_series.dropna().empty:
-        dtype_str = str(sample_series.dtype).lower()
-        if "datetime" in dtype_str:
-            return "TIMESTAMP"
-        if "int" in dtype_str:
-            return "BIGINT"
-        if "float" in dtype_str:
-            return "DOUBLE PRECISION"
-
-    # 5. Teks Deskripsi
-    if any(k in col_clean for k in ["name", "insured", "bank", "location", "address", "note", "keterangan", "cause", "objek", "deskripsi"]):
-        return "TEXT"
-
-    return "VARCHAR(255)"
 
 def check_target_table_in_db(
     file_id: str,
@@ -223,8 +213,8 @@ def check_target_table_in_db(
 
         mapping_matrix = [
             {
-                "column_name": col,
-                "status": "MATCH" if col in db_columns else "MISSING_IN_DB",
+                "column_name": sanitize_column_name(col),
+                "status": "MATCH" if sanitize_column_name(col) in db_columns else "MISSING_IN_DB",
             }
             for col in master_cols
         ]
@@ -238,16 +228,12 @@ def check_target_table_in_db(
             "message": f"Tabel '{table_name}' SUDAH EKSIS di database.",
         }
     else:
-        df_sample = read_excel_dynamic_header(file_path, actual_sheet).head(10)
-        df_sample.columns = [to_snake_case(col) for col in df_sample.columns]
-
         schema_suggestions = []
         for col in master_cols:
-            sample_series = df_sample[col] if col in df_sample.columns else None
-            suggested_type = infer_sql_type_dynamically(col, sample_series)
-
+            clean_col = sanitize_column_name(col)
+            suggested_type = infer_sql_type_dynamically(clean_col)
             schema_suggestions.append(
-                {"column_name": col, "suggested_sql_type": suggested_type}
+                {"column_name": clean_col, "suggested_sql_type": suggested_type}
             )
 
         return {
@@ -260,20 +246,11 @@ def check_target_table_in_db(
         }
 
 
-def sanitize_column_name(col_name: str) -> str:
-    col_name = col_name.strip().lower()
-    match = re.match(r"^(\d+)_(.+)$", col_name)
-    if match:
-        number_part, text_part = match.groups()
-        return f"{text_part}_{number_part}"
-    return col_name
-
-
 def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     column_definitions = []
     for col in schema_ddl:
         safe_col_name = sanitize_column_name(col["column_name"])
-        sql_type = col["suggested_sql_type"]
+        sql_type = col.get("suggested_sql_type") or infer_sql_type_dynamically(safe_col_name)
         column_definitions.append(f'"{safe_col_name}" {sql_type}')
 
     create_table_query = f"""
