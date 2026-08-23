@@ -1,5 +1,6 @@
 import io
 import csv
+import re
 import pandas as pd
 import numpy as np
 from sqlalchemy import text, inspect
@@ -10,21 +11,75 @@ from app.services.inspector_service import infer_sql_type_dynamically, sanitize_
 def _psql_insert_copy(table, conn, keys, data_iter):
     r"""
     Handler khusus Pandas to_sql untuk PostgreSQL COPY Protocol.
-    Menulis nilai None/NaN/kosong sebagai string khusus '\N' (NULL standar PostgreSQL COPY).
+    Mencegat dan membersihkan nilai non-tanggal/liar pada kolom TIMESTAMP secara langsung.
     """
     dbapi_conn = conn.connection
+    
+    # 1. Identifikasi indeks kolom tanggal secara presisi
+    date_col_indices = set()
+    date_keywords = ['date', 'period_of_insurance', 'period_of_start', 'period_of_end', 'dol', 'sdate', 'edate', 'inception', 'expiry']
+    
+    for idx, k in enumerate(keys):
+        k_lower = str(k).lower().strip()
+        is_date = any(dk in k_lower for dk in date_keywords) or k_lower.endswith('_start') or k_lower.endswith('_end')
+        is_excluded = any(ex in k_lower for ex in ['uw_year', 'usia', 'age', 'year'])
+        if is_date and not is_excluded:
+            date_col_indices.add(idx)
+
     with dbapi_conn.cursor() as cur:
         s_buf = io.StringIO()
         
         for row in data_iter:
             clean_row = []
-            for val in row:
-                if val is None or pd.isna(val) or str(val).strip() in ['NaT', 'nan', 'NaN', 'None', 'NULL', '<NA>', '']:
+            for idx, val in enumerate(row):
+                # Nilai kosong / NaN / None
+                if val is None or pd.isna(val):
                     clean_row.append(r'\N')
-                else:
-                    # Bersihkan tab dan newline agar tidak merusak delimiter TSV
-                    clean_val = str(val).replace('\t', ' ').replace('\r', '').replace('\n', ' ').strip()
-                    clean_row.append(clean_val)
+                    continue
+
+                val_str = str(val).strip()
+                if val_str.lower() in ['nat', 'nan', 'none', 'null', '<na>', '', '-']:
+                    clean_row.append(r'\N')
+                    continue
+
+                # 2. CEGATAN KHUSUS KOLOM TANGGAL
+                if idx in date_col_indices:
+                    # A. Jika sudah berformat standar ISO (YYYY-MM-DD atau YYYY-MM-DD HH:MM:SS), langsung loloskan
+                    if re.match(r'^\d{4}-\d{2}-\d{2}', val_str):
+                        clean_row.append(val_str)
+                        continue
+
+                    # B. Jika berupa angka serial Excel (30000 - 65000 = ~1982 s/d ~2078)
+                    try:
+                        num_val = float(val_str)
+                        if 30000 <= num_val <= 65000:
+                            dt_val = pd.to_datetime('1899-12-30') + pd.to_timedelta(num_val, unit='D')
+                            clean_row.append(dt_val.strftime('%Y-%m-%d %H:%M:%S'))
+                            continue
+                        else:
+                            # Angka nominal liar di luar rentang serial Excel diubah ke NULL
+                            clean_row.append(r'\N')
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                    # C. Parsing format teks tanggal non-ISO (DD/MM/YYYY, dsb.)
+                    try:
+                        dt_parsed = pd.to_datetime(val_str, errors='coerce')
+                        if pd.isna(dt_parsed) or dt_parsed.year < 1900 or dt_parsed.year > 2500:
+                            clean_row.append(r'\N')
+                            continue
+                        else:
+                            clean_row.append(dt_parsed.strftime('%Y-%m-%d %H:%M:%S'))
+                            continue
+                    except Exception:
+                        clean_row.append(r'\N')
+                        continue
+
+                # 3. Kolom Non-Tanggal: Bersihkan delimiter tab/newline
+                clean_val = val_str.replace('\t', ' ').replace('\r', '').replace('\n', ' ').strip()
+                clean_row.append(clean_val)
+
             s_buf.write('\t'.join(clean_row) + '\n')
             
         s_buf.seek(0)
@@ -37,10 +92,6 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 
 
 def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
-    """
-    Membuat tabel dengan tipe data SQL yang tepat (DOUBLE PRECISION, TIMESTAMP, BIGINT, VARCHAR)
-    SEBELUM df.to_sql dieksekusi agar tidak default ke TEXT / VARCHAR.
-    """
     insp = inspect(engine)
     if not insp.has_table(table_name):
         column_definitions = []
@@ -60,9 +111,6 @@ def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
 
 
 def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
-    """
-    Insert DataFrame ke PostgreSQL secara universal dan dinamis.
-    """
     if df is None or df.empty:
         return 0
 
@@ -70,24 +118,12 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     df_db.columns = [sanitize_column_name(c) for c in df_db.columns]
     table_clean = table_name.strip().lower()
 
-    # 1. Pastikan skema tabel dibuat dengan tipe data SQL yang presisi
+    # Pastikan skema tabel dibuat
     ensure_table_schema_exists(df_db, table_clean)
 
-    # 2. Format kolom tanggal/timestamp
-    for col in df_db.columns:
-        if pd.api.types.is_datetime64_any_dtype(df_db[col]):
-            df_db[col] = df_db[col].dt.strftime('%Y-%m-%d %H:%M:%S')
-            df_db[col] = df_db[col].replace(['NaT', 'nan', 'NaN', 'None', '<NA>', ''], np.nan)
-
-    # 3. Bulatkan kolom float ke 2 desimal
+    # Bulatkan kolom float ke 2 desimal
     for col in df_db.select_dtypes(include=['float', 'float64']).columns:
         df_db[col] = df_db[col].round(2)
-
-    # 4. Sanitasi nilai null murni
-    df_db = df_db.replace({
-        'NaT': None, 'nan': None, 'NaN': None, 
-        'None': None, 'NULL': None, '<NA>': None, '': None
-    })
 
     with engine.begin() as conn:
         df_db.to_sql(
@@ -127,9 +163,8 @@ def smart_load_to_db(df_clean: pd.DataFrame, table_name: str, periode_lengkap: s
                 with engine.begin() as connection:
                     query_hapus = text(f'DELETE FROM "{table_name_lower}" WHERE {col_where} = :periode')
                     connection.execute(query_hapus, {"periode": periode_lengkap})
-                print(f"[*] UPDATE DB: Menghapus {count_lama} baris data lama periode '{periode_lengkap}'.")
         except Exception as e:
-            print(f"[!] Warning saat pengecekan DB: {e}. Melanjutkan import...")
+            print(f"[!] Warning saat pengecekan DB: {e}")
 
     inserted_rows = insert_data_to_db(df_clean, table_name_lower)
 

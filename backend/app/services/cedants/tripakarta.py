@@ -34,47 +34,113 @@ class TripakartaETL:
             val_qs = treaty_raw
             val_surplus = treaty_raw
 
-        # 2. Baca Data dan Standarisasi Header
+        # 2. Baca Data
         df = read_excel_dynamic_header(file_path, target_sheet)
-        df.columns = [to_snake_case(str(col)) for col in df.columns]
 
-        rename_mapping = {
-            # 1. MD/Building & Breakdown SI
-            'breakdown_of_si_mdbuilding': 'breakdown_of_si_md_building',
-            'breakdown_of_si_md_building': 'breakdown_of_si_md_building',
-            'breakdown_of_si_mb': 'mb', 
-            'breakdown_of_si_stock': 'stock',
-            'breakdown_of_si_tpl': 'tpl', 
-            'breakdown_of_si_bi': 'bi',
-            'breakdown_of_si_other': 'other', 
-
-            # 2. Source
-            'source_directcoinsinward_fac': 'source_direct_coins_inward_fac',
-            'source_direct_coins_inward_fac': 'source_direct_coins_inward_fac',
-            'source': 'source_direct_coins_inward_fac',
-
-            # 3. TSI & Premi (hindari awalan angka)
-            '100_tsi': 'tsi_100',
-            '100percent_tsi': 'tsi_100',
-            'tsi_100': 'tsi_100',
-            '100_premium': 'premium_100',
-            '100percent_premium': 'premium_100',
-            'premium_100': 'premium_100',
-
-            # 4. Spreading & Periode
-            'period_of_insurance_end': 'end', 
-            'cedants_share': 'cedant_s_share',
-            'spreading_of_risk_qs': 'qs', 
-            'spreading_of_risk_surplus': 'surplus',
-            'spreading_of_risk_others': 'others',
-            'percent_marsh_re': 'marsh_re',
-            'marsh_re_share': 'marsh_re'
+        # 3. Mapping Kolom Berdasarkan Nama Header Excel Tripakarta
+        rename_dict = {
+            'No': 'no',
+            'COB': 'cob',
+            'REINSURED': 'reinsured',
+            'POLICY NUMBER': 'policy_number',
+            'INSURED NAME': 'insured_name',
+            'UW YEAR': 'uw_year',
+            'CURRENCY': 'currency',
+            
+            # Breakdown of SI (Merged Header)
+            'BREAKDOWN OF SI': 'breakdown_of_si_md_building',
+            'Unnamed: 9': 'mb',
+            'Unnamed: 10': 'stock',
+            'Unnamed: 11': 'tpl',
+            'Unnamed: 12': 'bi',
+            'Unnamed: 13': 'other',
+            
+            '100% TSI': 'tsi_100',
+            'BASIS OF INDEMNITY': 'basis_of_indemnity',
+            'OCCUPATION CODE': 'occupation_code',
+            'OCCUPATION': 'occupation',
+            'LOCATION': 'location',
+            
+            # Period of Insurance (Merged Header: Start & End)
+            'PERIOD OF INSURANCE': 'period_of_insurance_start',
+            'Unnamed: 20': 'period_of_insurance_end',
+            
+            'SOURCE (DIRECT/COINS/INWARD FAC.)': 'source_direct_coins_inward_fac',
+            "CEDANT'S SHARE": 'cedant_s_share',
+            
+            # Spreading of Risk (Merged Header: OR, QS, Surplus, Others)
+            'SPREADING OF RISK': 'spreading_of_risk_or',
+            'Unnamed: 24': 'qs',
+            'Unnamed: 25': 'surplus',
+            'Unnamed: 26': 'others',
+            
+            '100% Premium': 'premium_100',
+            'Premium Rate ': 'premium_rate',
+            'Premi QS': 'premi_qs',
+            'Comm QS': 'comm_qs',
+            'Premi SPL': 'premi_spl',
+            'Comm SPL': 'comm_spl',
+            '% Marsh Re': 'marsh_re',
+            'Premium QS\n(Marsh Re Share)': 'premium_qs_marsh_re_share',
+            'Premium SPL\n(Marsh Re Share)': 'premium_spl_marsh_re_share',
+            'NOTE': 'note',
+            'REMARKS': 'remarks'
         }
-        
-        df.rename(columns=rename_mapping, inplace=True)
-        df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 3. Sanitasi String ID & Metadata
+        df.rename(columns=rename_dict, inplace=True)
+        if 'Unnamed: 0' in df.columns:
+            df.drop(columns=['Unnamed: 0'], inplace=True)
+
+        # 4. Buang Baris Sub-Header yang bukan data (misal teks 'START', 'END', 'MD/BUILDING')
+        if 'period_of_insurance_start' in df.columns:
+            mask_sub = df['period_of_insurance_start'].astype(str).str.upper().str.contains(r'START|INCEPTION|PERIODE', na=False)
+            df = df[~mask_sub]
+
+        # 5. Parsing dan Format Kolom Tanggal ke Timestamp
+        for dcol in ['period_of_insurance_start', 'period_of_insurance_end']:
+            if dcol in df.columns:
+                def clean_date_entry(val):
+                    if pd.isna(val) or val is None:
+                        return None
+                    if isinstance(val, (pd.Timestamp, np.datetime64)):
+                        return pd.to_datetime(val).strftime('%Y-%m-%d %H:%M:%S')
+
+                    val_str = str(val).strip()
+                    if val_str.lower() in ['', 'nan', 'nat', 'none', 'null', '-', '0']:
+                        return None
+
+                    # Serial Excel
+                    try:
+                        num_v = float(val_str)
+                        if 30000 <= num_v <= 65000:
+                            dt = pd.to_datetime('1899-12-30') + pd.to_timedelta(num_v, unit='D')
+                            return dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        pass
+
+                    # String Tanggal Biasa
+                    try:
+                        dt_obj = pd.to_datetime(val_str, errors='coerce')
+                        if pd.isna(dt_obj) or dt_obj.year < 1900 or dt_obj.year > 2500:
+                            return None
+                        return dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        return None
+
+                df[dcol] = df[dcol].apply(clean_date_entry)
+
+        # Salin ke alias alternatif jika master column memakai format pendek
+        if 'period_of_insurance_start' in df.columns:
+            df['period_of_start'] = df['period_of_insurance_start']
+            df['start_date'] = df['period_of_insurance_start']
+            df['start'] = df['period_of_insurance_start']
+
+        if 'period_of_insurance_end' in df.columns:
+            df['period_of_end'] = df['period_of_insurance_end']
+            df['end_date'] = df['period_of_insurance_end']
+            df['end'] = df['period_of_insurance_end']
+
+        # 6. Metadata & ID Sanitization
         if 'no' in df.columns:
             df['no'] = df['no'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df['no'] = df['no'].replace(['nan', 'None', 'NaN', 'NaT', ''], np.nan)
@@ -93,37 +159,34 @@ class TripakartaETL:
             if 'cob' in df.columns:
                 df['cob'] = override_cob.strip().upper()
 
-        # 4. Validasi Tanggal
-        df = validate_dates(df)
-
-        # 5. Sinkronisasi Kolom Master
+        # 7. Sinkronisasi dengan Master Columns Tripakarta
         for col in master_cols:
             if col not in df.columns:
                 df[col] = np.nan
 
         df_clean = df[master_cols].copy()
 
-        # 6. Filter Baris Sampah & Total Footer
+        # 8. Filter Baris Footer / Total
         if "policy_number" in df_clean.columns:
             df_clean = df_clean.dropna(subset=["policy_number"], how="all")
-            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
+            trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
             pol_str = df_clean["policy_number"].astype(str).str.upper().str.strip()
-            df_clean = df_clean[~pol_str.str.match(trash_exact_pattern, na=False)]
+            df_clean = df_clean[~pol_str.str.match(trash_regex, na=False)]
 
-        # 7. Sanitasi & Konversi Semua Kolom Numerik (PENTING AGAR TIDAK ERROR SQL)
+        # 9. Sanitasi Kolom Numerik
         num_cols = [
             "breakdown_of_si_md_building", "mb", "stock", "tpl", "bi", "other",
-            "100_tsi", "cedant_s_share", "spreading_of_risk_or", "qs", "surplus",
-            "others", "100_premium", "premium_rate", "premi_qs", "comm_qs",
+            "tsi_100", "100_tsi", "cedant_s_share", "spreading_of_risk_or", "qs", "surplus",
+            "others", "premium_100", "100_premium", "premium_rate", "premi_qs", "comm_qs",
             "premi_spl", "comm_spl", "marsh_re", "premium_qs_marsh_re_share",
             "premium_spl_marsh_re_share"
         ]
         for col in num_cols:
             if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(
-                    df_clean[col].astype(str).str.replace(',', '').str.replace(' ', '').str.strip(),
-                    errors='coerce'
-                )
+                s = df_clean[col].astype(str).str.strip()
+                s = s.replace({'-': np.nan, 'NIL': np.nan, 'nil': np.nan, 'None': np.nan, 'nan': np.nan, 'NaN': np.nan, '': np.nan})
+                s = s.str.replace(',', '', regex=False)
+                df_clean[col] = pd.to_numeric(s, errors='coerce')
 
         return df_clean.reset_index(drop=True)
 

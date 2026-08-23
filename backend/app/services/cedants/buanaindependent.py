@@ -46,11 +46,15 @@ class BuanaIndependentETL:
             "100_tsi": "tsi_100",
             "100_premium": "premium_100",
             "period_of_start": "period_of_insurance_start",
+            "period_of_insurance_start": "period_of_insurance_start",
             "period_of_end": "period_of_insurance_end",
+            "period_of_insurance_end": "period_of_insurance_end",
             "new": "new_renewal"
         }
         df.rename(columns=rename_mapping, inplace=True)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
 
+        # Handle Reinsurer Share QS vs SPL
         if "premium_reinsurer_share" in df.columns:
             sheet_lower = target_sheet.lower().strip()
             if "qs" in sheet_lower:
@@ -61,8 +65,17 @@ class BuanaIndependentETL:
                 df["premium_reinsurer_share_qs"] = None
             df.drop(columns=["premium_reinsurer_share"], inplace=True)
 
-        df['period'] = periode_lengkap
+        # -----------------------------------------------------------------
+        # 1. BUANG BARIS FOOTER / TOTAL SEBELUM OVERRIDE COB BERJALAN
+        # -----------------------------------------------------------------
+        # Baris data valid di Buana selalu memiliki nomor urut / reinsurer_id / treatytype
+        if "no" in df.columns:
+            # Buang jika kolom 'no' berisi teks TOTAL atau NaN
+            s_no = df["no"].astype(str).str.upper().str.strip()
+            df = df[~s_no.str.contains(r'TOTAL|JUMLAH|REKAP|SUMMARY', na=False) & s_no.str.match(r'^\d+(\.0)?$')]
 
+        # Set periode & override COB setelah baris total dibuang
+        df['period'] = periode_lengkap
         if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
             if 'cob_type_of_cover' in df.columns:
                 df['cob_type_of_cover'] = override_cob.strip().upper()
@@ -72,6 +85,54 @@ class BuanaIndependentETL:
                 df[col] = np.nan
 
         df_clean = df[master_cols].copy()
+
+        # -----------------------------------------------------------------
+        # 2. SANITASI KOLOM TANGGAL (MEMBUANG NILAI NOMINAL DI SEL TANGGAL)
+        # -----------------------------------------------------------------
+        date_cols = ["period_of_insurance_start", "period_of_insurance_end"]
+        for dcol in date_cols:
+            if dcol in df_clean.columns:
+                def sanitize_date_val(val):
+                    if pd.isna(val) or val is None:
+                        return None
+                    val_str = str(val).strip()
+                    if val_str.lower() in ['', 'nan', 'nat', 'none', 'null', '-', '0']:
+                        return None
+
+                    # Cek jika angka serial Excel (30000 s/d 65000 = ~1982 s/d ~2078)
+                    try:
+                        num = float(val_str)
+                        if 30000 <= num <= 65000:
+                            dt = pd.to_datetime('1899-12-30') + pd.to_timedelta(num, unit='D')
+                            return dt.strftime('%Y-%m-%d')
+                        else:
+                            # Angka 1500000000.0 otomatis dibuang menjadi None (NULL)
+                            return None
+                    except ValueError:
+                        pass
+
+                    # Format tanggal string biasa
+                    try:
+                        dt_obj = pd.to_datetime(val_str, dayfirst=True, errors='coerce')
+                        if pd.isna(dt_obj) or dt_obj.year < 1900 or dt_obj.year > 2500:
+                            return None
+                        return dt_obj.strftime('%Y-%m-%d')
+                    except Exception:
+                        return None
+
+                df_clean[dcol] = df_clean[dcol].apply(sanitize_date_val)
+
+        # -----------------------------------------------------------------
+        # 3. SANITASI KOLOM ID & STRING
+        # -----------------------------------------------------------------
+        string_cols = ["id", "name", "treatytype", "cob_type_of_cover", "new_renewal", "policyno", "policy_no", "no_polis"]
+        for scol in string_cols:
+            if scol in df_clean.columns:
+                df_clean[scol] = df_clean[scol].apply(format_id_column)
+
+        # -----------------------------------------------------------------
+        # 4. SANITASI KOLOM NUMERIK
+        # -----------------------------------------------------------------
         num_cols = [
             "no", "uw_year", "breakdown_of_si_md_building", "mb", "stock", "tpl", "bi", "other",
             "tsi_100", "cedants_share", "spreading_of_risk_or", "spreading_of_risk_qs",
@@ -80,9 +141,12 @@ class BuanaIndependentETL:
         ]
         for col in num_cols:
             if col in df_clean.columns:
-                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+                s = df_clean[col].astype(str).str.strip()
+                s = s.replace({'-': np.nan, 'NIL': np.nan, 'nil': np.nan, 'None': np.nan, 'nan': np.nan, 'NaN': np.nan, '': np.nan})
+                s = s.str.replace(',', '', regex=False)
+                df_clean[col] = pd.to_numeric(s, errors='coerce')
 
-        return df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period'])
+        return df_clean.dropna(how='all', subset=[col for col in master_cols if col != 'period']).reset_index(drop=True)
 
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
@@ -94,21 +158,14 @@ class BuanaIndependentETL:
 
         # 2. Mapping Explicit untuk Merged Header & Kolom Unnamed Buana
         rename_mapping = {
-            # Merged Header 1: Period of Insurance (From & To)
             "period_of_insurance": "period_of_insurance_start",
             "unnamed_8": "period_of_insurance_end",
-            
-            # Merged Header 2: Cedant's Share (% & Amount)
             "cedants_share": "cedants_share_percent",
             "unnamed_17": "cedants_share_in_amount",
-            
-            # Merged Header 3: Spreading of Claim (OR, QS, Surplus, Others)
             "spreading_of_claim": "spreading_of_claim_or",
             "unnamed_19": "spreading_of_claim_qs",
             "unnamed_20": "spreading_of_claim_surplus",
             "unnamed_21": "spreading_of_claim_others",
-            
-            # Header Non-Spasi / Alias Lain
             "riskcat": "risk_cat",
             "source_directcoinsinward_fac": "source_direct_coins_inward_fac",
             "claim_no": "claim_reff_no",
@@ -152,7 +209,7 @@ class BuanaIndependentETL:
                     errors='coerce'
                 )
 
-        # 7. Sanitasi Khusus Kolom 'no' (Agar PostgreSQL COPY protocol sukses tanpa error '1.0')
+        # 7. Sanitasi Khusus Kolom 'no'
         if "no" in df.columns:
             df["no"] = pd.to_numeric(df["no"], errors='coerce').fillna(0).astype('int64')
 

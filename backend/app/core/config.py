@@ -8,15 +8,16 @@ MASTER_COLUMNS_PREMI = {
         "currency", "premium", "commission", "net", "roe", "production",
         "objekinfo01", "objekinfo02", "period"
     ],
+    # Ganti nama 'end' menjadi 'period_of_insurance_end' di list tripakarta
     "tripakarta": [
-        "no", "cob", "reinsured", "policy_number", "insured_name",
-        "uw_year", "currency", "breakdown_of_si_md_building", "mb", "stock",
-        "tpl", "bi", "other", "tsi_100", "basis_of_indemnity",
-        "occupation_code", "occupation", "location", "period_of_insurance_start", "end",
-        "source_direct_coins_inward_fac", "cedant_s_share", "spreading_of_risk_or", "qs", "surplus",
-        "others", "premium_100", "premium_rate", "premi_qs", "comm_qs",
-        "premi_spl", "comm_spl", "marsh_re", "premium_qs_marsh_re_share", "premium_spl_marsh_re_share",
-        "note", "remarks", "period", "treaty_name_qs", "treaty_name_surplus"
+        "no","cob",
+        "reinsured","policy_number","insured_name","uw_year","currency","breakdown_of_si_md_building",
+        "mb","stock","tpl","bi","other","tsi_100","basis_of_indemnity","occupation_code",
+        "occupation","location","period_of_insurance_start","period_of_insurance_end",
+        "cedant_s_share","spreading_of_risk_or","qs","surplus","others",
+        "premium_100","premium_rate","premi_qs","comm_qs","premi_spl","comm_spl","marsh_re",
+        "premium_qs_marsh_re_share","premium_spl_marsh_re_share","note",
+        "remarks","period","treaty_name_qs","treaty_name_surplus",
     ],
     "buanaindependent": [
         "no", "cob_type_of_cover", "reinsured", "policy_number", "insured_name",

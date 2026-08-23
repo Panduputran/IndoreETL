@@ -181,7 +181,10 @@ def safe_parse_single_date(val):
 
 def validate_dates(df: pd.DataFrame) -> pd.DataFrame:
     """Melakukan validasi dan konversi kolom berunsur tanggal secara otomatis."""
-    keywords = ['period_of_insurance', 'start', 'end', 'date', 'tanggal', 'sdate', 'edate', 'akad', 'lahir']
+    keywords = [
+        'period_of_insurance', 'period_of_start', 'period_of_end', 
+        'date', 'tanggal', 'sdate', 'edate', 'dol', 'inception', 'expiry', 'akad', 'lahir'
+    ]
 
     for col in df.columns:
         col_lower = str(col).lower()
