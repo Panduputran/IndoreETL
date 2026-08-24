@@ -15,14 +15,31 @@ def _psql_insert_copy(table, conn, keys, data_iter):
     """
     dbapi_conn = conn.connection
     
-    # 1. Identifikasi indeks kolom tanggal secara presisi
+    # 1. Deteksi indeks kolom tanggal secara mutlak
     date_col_indices = set()
+    
+    # Tambahkan nama persis (exact match) agar tidak mungkin meleset
+    exact_date_columns = {
+        'period_of_insurance_start', 'period_of_insurance_end', 
+        'period_of_start', 'period_of_end', 'start', 'end', 
+        'start_date', 'end_date', 'tanggal'
+    }
     date_keywords = ['date', 'period_of_insurance', 'period_of_start', 'period_of_end', 'dol', 'sdate', 'edate', 'inception', 'expiry']
     
     for idx, k in enumerate(keys):
         k_lower = str(k).lower().strip()
-        is_date = any(dk in k_lower for dk in date_keywords) or k_lower.endswith('_start') or k_lower.endswith('_end')
-        is_excluded = any(ex in k_lower for ex in ['uw_year', 'usia', 'age', 'year'])
+        
+        # Cek exact match ATAU deteksi keyword
+        is_date = (
+            k_lower in exact_date_columns 
+            or any(dk in k_lower for dk in date_keywords) 
+            or k_lower.endswith('_start') 
+            or k_lower.endswith('_end')
+            or 'start' in k_lower
+            or 'end' in k_lower
+        )
+        is_excluded = any(ex in k_lower for ex in ['uw_year', 'usia', 'age', 'year', 'send', 'trend', 'vendor'])
+        
         if is_date and not is_excluded:
             date_col_indices.add(idx)
 
@@ -42,30 +59,30 @@ def _psql_insert_copy(table, conn, keys, data_iter):
                     clean_row.append(r'\N')
                     continue
 
-                # 2. CEGATAN KHUSUS KOLOM TANGGAL
+                # 2. CEGATAN KHUSUS KOLOM TANGGAL (TIMESTAMP)
                 if idx in date_col_indices:
-                    # A. Jika sudah berformat standar ISO (YYYY-MM-DD atau YYYY-MM-DD HH:MM:SS), langsung loloskan
+                    # Format ISO Timestamp YYYY-MM-DD
                     if re.match(r'^\d{4}-\d{2}-\d{2}', val_str):
                         clean_row.append(val_str)
                         continue
 
-                    # B. Jika berupa angka serial Excel (30000 - 65000 = ~1982 s/d ~2078)
+                    # Cegat angka nominal liar / serial Excel
                     try:
-                        num_val = float(val_str)
+                        num_val = float(val_str.replace(',', ''))
                         if 30000 <= num_val <= 65000:
                             dt_val = pd.to_datetime('1899-12-30') + pd.to_timedelta(num_val, unit='D')
                             clean_row.append(dt_val.strftime('%Y-%m-%d %H:%M:%S'))
                             continue
                         else:
-                            # Angka nominal liar di luar rentang serial Excel diubah ke NULL
+                            # Angka 1500000000 langsung dipaksa jadi NULL di sini
                             clean_row.append(r'\N')
                             continue
                     except (ValueError, TypeError):
                         pass
 
-                    # C. Parsing format teks tanggal non-ISO (DD/MM/YYYY, dsb.)
+                    # Parse string tanggal umum
                     try:
-                        dt_parsed = pd.to_datetime(val_str, errors='coerce')
+                        dt_parsed = pd.to_datetime(val_str, errors='coerce', dayfirst=True)
                         if pd.isna(dt_parsed) or dt_parsed.year < 1900 or dt_parsed.year > 2500:
                             clean_row.append(r'\N')
                             continue
@@ -78,6 +95,9 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 
                 # 3. Kolom Non-Tanggal: Bersihkan delimiter tab/newline
                 clean_val = val_str.replace('\t', ' ').replace('\r', '').replace('\n', ' ').strip()
+                if re.match(r'^-?\d+\.0$', clean_val):
+                    clean_val = clean_val[:-2]
+
                 clean_row.append(clean_val)
 
             s_buf.write('\t'.join(clean_row) + '\n')
