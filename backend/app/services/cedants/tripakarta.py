@@ -304,7 +304,7 @@ class TripakartaETL:
         df.rename(columns=rename_dict, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 6. Filter Baris Bersih
+        # 6. Filter Baris Bersih & Grand Total
         for id_col in ["register_no", "policy_number"]:
             if id_col in df.columns:
                 df[id_col] = df[id_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -326,11 +326,21 @@ class TripakartaETL:
                 return m.group() if m else str(val).replace('.0', '').strip()
             df["uw_year"] = df["uw_year"].apply(clean_uw_year)
 
-        # 8. Tanggal Parsing
+        # 8. Tanggal Parsing (Standardized ISO String)
         date_cols = ["dol", "period_of_insurance_start", "period_of_insurance_end"]
         for dcol in date_cols:
             if dcol in df.columns:
-                df[dcol] = pd.to_datetime(df[dcol], errors='coerce', dayfirst=True)
+                def clean_date_str(v):
+                    if pd.isna(v) or v is None:
+                        return None
+                    try:
+                        dt = pd.to_datetime(v, errors='coerce', dayfirst=True)
+                        if pd.isna(dt) or dt.year < 1900 or dt.year > 2500:
+                            return None
+                        return dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        return None
+                df[dcol] = df[dcol].apply(clean_date_str)
 
         # 9. Set Periode & Override COB
         df['period'] = periode_lengkap
@@ -355,5 +365,10 @@ class TripakartaETL:
         for col in num_cols:
             if col in df_clean.columns:
                 df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0.0)
+
+        # 12. KONVERSI KOLOM 'no' KE INTEGER MURNI (1, 2, 3...)
+        if "no" in df_clean.columns:
+            clean_no = df_clean["no"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_clean["no"] = pd.to_numeric(clean_no, errors='coerce').astype('Int64')
 
         return df_clean.reset_index(drop=True)

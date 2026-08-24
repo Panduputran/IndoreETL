@@ -1,158 +1,128 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { 
   Search, 
   Download, 
   Building2, 
-  CheckCircle2, 
+  RefreshCw, 
+  ChevronDown, 
+  ChevronLeft, 
+  ChevronRight,
   AlertTriangle,
-  Trash2,
-  Edit,
-  Plus,
-  AlertCircle,
-  X,
-  ChevronDown,
+  CheckCircle2,
   Filter,
   Check,
-  Link2,
-  CheckCircle
+  DatabaseZap,
+  FolderOpen
 } from 'lucide-react';
 
-// Data Dummy IPR FIRE Berdasarkan Transaksi Premi & Klaim Properti
-const initialFireBorderoData = [
-  {
-    id: 1,
-    type: 'PREMIUM', // PREMIUM / KLAIM
-    cedantCode: 'CED-TRIPAKARTA',
-    treatyCode: 'TRY-TRI-FIRE-2026',
-    policyNumber: 'POL-FIRE-2026-001',
-    claimReffNumber: '-',
-    insuredName: 'PT Sentosa Jaya Abadi',
-    cedantName: 'PT Asuransi Tripakarta',
-    cob: 'FIRE',
-    tsi100: 5000000000,
-    occupation: 'Pabrik Tekstil / Ruko',
-    location: 'Kab. Bogor, Jawa Barat (EQ Zone 3)',
-    periodStart: '2026-01-01',
-    periodEnd: '2027-01-01',
-    premium100: 25000000,
-    reindoSharePremium: 12500000,
-    dateOfLoss: '-',
-    claimAmountGross: 0,
-    causeOfLoss: '-',
-    status: 'Valid'
-  },
-  {
-    id: 2,
-    type: 'PREMIUM',
-    cedantCode: 'CED-ACA',
-    treatyCode: 'Unbound', // <-- Contoh data Unbound dari hasil ETL
-    policyNumber: 'POL-FIRE-2026-002',
-    claimReffNumber: '-',
-    insuredName: 'CV Abadi Makmur Industri',
-    cedantName: 'PT Asuransi Central Asia (ACA)',
-    cob: 'FIRE',
-    tsi100: 1200000000,
-    occupation: 'Gudang Logistik',
-    location: 'Kawasan Industri Cikarang (EQ Zone 2)',
-    periodStart: '2026-02-15',
-    periodEnd: '2027-02-15',
-    premium100: 6000000,
-    reindoSharePremium: 3000000,
-    dateOfLoss: '-',
-    claimAmountGross: 0,
-    causeOfLoss: '-',
-    status: 'Valid'
-  },
-  {
-    id: 3,
-    type: 'KLAIM',
-    cedantCode: 'CED-BUANA',
-    treatyCode: 'TRY-BIA-FIRE-2026',
-    policyNumber: 'POL-FIRE-2026-003',
-    claimReffNumber: 'LKP-FIRE-2026-012',
-    insuredName: 'PT Nusantara Megah Properti',
-    cedantName: 'PT Asuransi Buana Independent',
-    cob: 'FIRE',
-    tsi100: 8500000000,
-    occupation: 'Gedung Perkantoran / Mall',
-    location: 'Jakarta Selatan (EQ Zone 4)',
-    periodStart: '2026-03-01',
-    periodEnd: '2027-03-01',
-    premium100: 42500000,
-    reindoSharePremium: 21250000,
-    dateOfLoss: '2026-05-14',
-    claimAmountGross: 1500000000,
-    causeOfLoss: 'Korsleting Listrik Area Lt. 2',
-    status: 'Valid'
-  },
-  {
-    id: 4,
-    type: 'KLAIM',
-    cedantCode: 'CED-ASKRIDA',
-    treatyCode: 'Unbound', // <-- Contoh data Unbound dari hasil ETL
-    policyNumber: 'POL-FIRE-2026-004',
-    claimReffNumber: 'LKP-FIRE-2026-018',
-    insuredName: 'PT Buana Utama Enterprise',
-    cedantName: 'PT Asuransi Askrida',
-    cob: 'FIRE',
-    tsi100: 3000000000,
-    occupation: 'Pabrik Makanan & Minuman',
-    location: 'Surabaya, Jawa Timur (EQ Zone 3)',
-    periodStart: '2026-04-10',
-    periodEnd: '2027-04-10',
-    premium100: 15000000,
-    reindoSharePremium: 7500000,
-    dateOfLoss: '2026-06-02',
-    claimAmountGross: 450000000,
-    causeOfLoss: 'Kebakaran Mesin Pengolahan',
-    status: 'Warning'
-  }
-];
-
 export default function FormFire() {
-  const [dataList, setDataList] = useState(initialFireBorderoData);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'PREMIUM' | 'KLAIM'
-  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'Valid' | 'Warning'
+  // Daftar tabel khusus Class of Business (COB) FIRE
+  const fireTables = [
+    { id: 'premi_buanaindependent_fire', label: 'Bordero Premi Fire (Buana Independent)', type: 'PREMIUM' },
+    { id: 'premi_tripakarta_fire', label: 'Bordero Premi Fire (Tripakarta)', type: 'PREMIUM' },
+    { id: 'premi_aca_fire', label: 'Bordero Premi Fire (ACA)', type: 'PREMIUM' },
+    { id: 'claim_buanaindependent_fire', label: 'Bordero Klaim Fire (Buana Independent)', type: 'KLAIM' },
+    { id: 'claim_tripakarta_fire', label: 'Bordero Klaim Fire (Tripakarta)', type: 'KLAIM' },
+    { id: 'claim_aca_fire', label: 'Bordero Klaim Fire (ACA)', type: 'KLAIM' }
+  ];
 
-  // State Notifikasi Toast Soft Minimalis
-  const [toastMessage, setToastMessage] = useState(null);
+  // Default langsung ke tabel yang sudah ada datanya
+  const [selectedTable, setSelectedTable] = useState('premi_buanaindependent_fire');
+  const [openTableDropdown, setOpenTableDropdown] = useState(false);
+  const tableDropdownRef = useRef(null);
 
-  // State Custom Dropdown
-  const [openTypeDropdown, setOpenTypeDropdown] = useState(false);
+  // State Filter Status Validasi (Dieksekusi di Backend SQL)
+  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'VALID' | 'WARNING'
   const [openStatusDropdown, setOpenStatusDropdown] = useState(false);
-
-  const typeDropdownRef = useRef(null);
   const statusDropdownRef = useRef(null);
 
-  // State Modal (Delete, Edit & Add)
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [modalMode, setModalMode] = useState(null); // 'ADD' | 'EDIT' | null
-  const [formData, setFormData] = useState({
-    id: null,
-    type: 'PREMIUM',
-    cedantCode: 'CED-ASKRIDA',
-    treatyCode: 'TRY-ASK-FIRE-2026',
-    policyNumber: '',
-    claimReffNumber: '-',
-    insuredName: '',
-    cedantName: '',
-    cob: 'FIRE',
-    tsi100: 0,
-    occupation: '',
-    location: '',
-    premium100: 0,
-    claimAmountGross: 0,
-    causeOfLoss: '-',
-    dateOfLoss: '-',
-    status: 'Valid'
-  });
+  const [columns, setColumns] = useState([]);
+  const [dataList, setDataList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Close dropdown saat klik di luar area
+  // Status Keberadaan Tabel
+  const [isTableExists, setIsTableExists] = useState(true);
+
+  // Pagination & Counts langsung dari Database
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRows, setTotalRows] = useState(0);
+  const [warningTotal, setWarningTotal] = useState(0);
+  const [validTotal, setValidTotal] = useState(0);
+
+  // Kata kunci kolom wajib utama
+  const mandatoryKeywords = [
+    'policy', 'polis', 'insured', 'name', 
+    'tsi_100', 'premium_100', 'gross_premium',
+    'claim_amount', 'date_of_loss', 'dol'
+  ];
+
+  // Kolom opsional yang DIKECUALIKAN dari Warning (termasuk SPL, QS, dan breakdown)
+  const excludedKeywords = [
+    'no', 'id', 'remarks', 'unnamed', 'notes', 'spl', 'surplus', 
+    'share_spl', 'share_qs', 'others', 'spreading', 'breakdown', 'mb', 'stock', 'tpl', 'bi'
+  ];
+
+  // Fetch data dari FastAPI Endpoint
+  const fetchFireData = async (tableName, targetPage = 1, currentLimit = limit, currentStatus = filterStatus) => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`http://localhost:8000/api/v1/tables/${tableName}/data`, {
+        params: {
+          page: targetPage,
+          limit: currentLimit,
+          status: currentStatus
+        }
+      });
+
+      // Handle jika tabel belum pernah dibuat / kosong
+      if (response.data.status === 'empty') {
+        setIsTableExists(false);
+        setDataList([]);
+        setColumns([]);
+        setTotalRows(0);
+        setWarningTotal(0);
+        setValidTotal(0);
+        setTotalPages(1);
+        setLoading(false);
+        return;
+      }
+
+      if (response.data.status === 'success') {
+        setIsTableExists(true);
+        setColumns(response.data.columns || []);
+        setDataList(response.data.data || []);
+        setTotalRows(response.data.total_rows || 0);
+        setWarningTotal(response.data.warning_total || 0);
+        setValidTotal(response.data.valid_total || 0);
+        setTotalPages(response.data.total_pages || 1);
+        setPage(response.data.page || 1);
+      }
+    } catch (err) {
+      console.error("Gagal mengambil data Fire dari database:", err);
+      setIsTableExists(false);
+      setDataList([]);
+      setColumns([]);
+      setTotalRows(0);
+      setWarningTotal(0);
+      setValidTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFireData(selectedTable, page, limit, filterStatus);
+  }, [selectedTable, limit, filterStatus]);
+
   useEffect(() => {
     function handleClickOutside(event) {
-      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target)) {
-        setOpenTypeDropdown(false);
+      if (tableDropdownRef.current && !tableDropdownRef.current.contains(event.target)) {
+        setOpenTableDropdown(false);
       }
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
         setOpenStatusDropdown(false);
@@ -162,182 +132,84 @@ export default function FormFire() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Format IDR Currency
-  const formatRupiah = (number) => {
-    if (!number || number === 0) return '-';
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      maximumFractionDigits: 0
-    }).format(number);
+  const handleTableChange = (newTableId) => {
+    setSelectedTable(newTableId);
+    setOpenTableDropdown(false);
+    setPage(1);
   };
 
-  // FUNGSI SIMULASI INTERAKTIF MATCH TREATY CODE
-  const handleBulkMatchTreaty = () => {
-    const unboundCount = dataList.filter(d => d.treatyCode === 'Unbound' || d.treatyCode === '-').length;
-
-    if (unboundCount === 0) {
-      setToastMessage('Semua data sudah terikat (Linked) ke Treaty Code!');
-      setTimeout(() => setToastMessage(null), 3000);
-      return;
-    }
-
-    // Ubah semua yang Unbound menjadi Treaty Code aktif khusus FIRE
-    setDataList(prev => prev.map(item => {
-      if (item.treatyCode === 'Unbound' || item.treatyCode === '-') {
-        let assignedCode = 'TRY-ASK-FIRE-2026';
-        if (item.cedantCode === 'CED-ACA') assignedCode = 'TRY-ACA-FIRE-2026';
-        if (item.cedantCode === 'CED-BUANA') assignedCode = 'TRY-BIA-FIRE-2026';
-        if (item.cedantCode === 'CED-TRIPAKARTA') assignedCode = 'TRY-TRI-FIRE-2026';
-
-        return { ...item, treatyCode: assignedCode };
-      }
-      return item;
-    }));
-
-    setToastMessage(`Berhasil mencocokkan ${unboundCount} data Unbound ke Treaty Code aktif!`);
-    setTimeout(() => setToastMessage(null), 3500);
+  const handleStatusChange = (newStatus) => {
+    setFilterStatus(newStatus);
+    setOpenStatusDropdown(false);
+    setPage(1);
   };
 
-  // Open Modal Tambah Baru (Opsional - Tanpa required)
-  const handleOpenAddModal = () => {
-    setFormData({
-      id: Date.now(),
-      type: 'PREMIUM',
-      cedantCode: 'CED-ASKRIDA',
-      treatyCode: 'TRY-ASK-FIRE-2026',
-      policyNumber: '',
-      claimReffNumber: '-',
-      insuredName: '',
-      cedantName: '',
-      cob: 'FIRE',
-      tsi100: 0,
-      occupation: '',
-      location: '',
-      premium100: 0,
-      claimAmountGross: 0,
-      causeOfLoss: '-',
-      dateOfLoss: '-',
-      status: 'Valid'
+  // Evaluasi kolom kosong untuk baris yang sedang tampil
+  const processedData = useMemo(() => {
+    if (!isTableExists) return [];
+    return dataList.map((row) => {
+      const missingFields = [];
+
+      columns.forEach((col) => {
+        const colLower = col.toLowerCase();
+        const isMatch = mandatoryKeywords.some(kw => colLower.includes(kw));
+        const isExcluded = excludedKeywords.some(ex => colLower.includes(ex));
+        const isMandatory = isMatch && !isExcluded;
+
+        const val = row[col];
+        const isNull = val === null || val === undefined || String(val).trim() === '' || String(val).toLowerCase() === 'nan' || String(val).toLowerCase() === '<na>';
+
+        if (isMandatory && isNull) {
+          missingFields.push(col);
+        }
+      });
+
+      return {
+        ...row,
+        _status: missingFields.length > 0 ? 'WARNING' : 'VALID',
+        _missingFields: missingFields
+      };
     });
-    setModalMode('ADD');
-  };
+  }, [dataList, columns, isTableExists]);
 
-  // Open Modal Edit Data
-  const handleOpenEditModal = (item) => {
-    setFormData({ ...item });
-    setModalMode('EDIT');
-  };
-
-  // Submit Handler (Create & Update) dengan Sanitasi Nilai Fleksibel
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-
-    const sanitizedData = {
-      ...formData,
-      policyNumber: formData.policyNumber?.trim() || 'POL-FIRE-DRAFT',
-      insuredName: formData.insuredName?.trim() || '-',
-      cedantName: formData.cedantName?.trim() || '-',
-      treatyCode: formData.treatyCode?.trim() || 'Unbound',
-      occupation: formData.occupation?.trim() || '-',
-      location: formData.location?.trim() || '-',
-      tsi100: Number(formData.tsi100) || 0,
-      premium100: Number(formData.premium100) || 0,
-      claimAmountGross: Number(formData.claimAmountGross) || 0
-    };
-
-    if (modalMode === 'ADD') {
-      setDataList([sanitizedData, ...dataList]);
-    } else if (modalMode === 'EDIT') {
-      setDataList(dataList.map(item => item.id === sanitizedData.id ? sanitizedData : item));
-    }
-    setModalMode(null);
-  };
-
-  // Handler Hapus Data
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
-      setDataList(prev => prev.filter(item => item.id !== deleteTarget.id));
-      setDeleteTarget(null);
-    }
-  };
-
-  const filteredData = dataList.filter(item => {
-    const matchesSearch = 
-      item.policyNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.insuredName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.cedantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.cedantCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.treatyCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.occupation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.claimReffNumber.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesType = filterType === 'ALL' || item.type === filterType;
-    const matchesStatus = filterStatus === 'ALL' || item.status === filterStatus;
-
-    return matchesSearch && matchesType && matchesStatus;
+  const filteredData = processedData.filter((item) => {
+    if (!searchQuery.trim()) return true;
+    return Object.values(item).some((val) => 
+      String(val || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
-
-  const unboundCount = dataList.filter(d => d.treatyCode === 'Unbound' || d.treatyCode === '-').length;
 
   return (
     <div className="p-6 space-y-5 text-xs bg-slate-50 min-h-screen relative font-sans">
       
-      {/* FLOATING TOAST NOTIFIKASI - CLEAN LIGHT SAAS THEME */}
-      {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 bg-white text-slate-800 px-4 py-2.5 rounded-2xl shadow-xl border border-blue-100 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-3 duration-200">
-          <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center border border-blue-100 shrink-0">
-            <CheckCircle className="w-4 h-4 text-blue-600" />
-          </div>
-          <span className="font-bold text-xs text-slate-700">{toastMessage}</span>
-        </div>
-      )}
-
-      {/* Top Header */}
+      {/* Header Halaman */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2 mt-0.5">
             <Building2 className="w-5 h-5 text-blue-600 shrink-0" />
-            <span>Bordero Data - COB FIRE (IPR Standard)</span>
+            <span>Bordero Data - COB FIRE (Live PostgreSQL)</span>
           </h1>
           <p className="text-slate-500 text-[11px] mt-0.5">
-            Daftar seluruh data IPR Bordero Premi & Klaim terproses khusus Class of Business FIRE / Kebakaran Properti.
+            Monitoring data real-time bordero Premi & Klaim khusus Class of Business FIRE / Kebakaran Properti.
           </p>
         </div>
 
         {/* Action Header Buttons */}
         <div className="flex items-center gap-2 shrink-0">
-          
-          {/* TOMBOL SIMULASI MATCH TREATY */}
           <button 
             type="button"
-            onClick={handleBulkMatchTreaty}
-            className={`flex items-center gap-1.5 font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer ${
-              unboundCount > 0 
-                ? 'bg-amber-500 hover:bg-amber-600 text-white animate-pulse' 
-                : 'bg-slate-800 hover:bg-slate-900 text-white'
-            }`}
-            title="Klik untuk menghubungkan data Unbound ke Treaty Code secara otomatis"
+            onClick={() => fetchFireData(selectedTable, page, limit, filterStatus)}
+            className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
           >
-            <Link2 className="w-4 h-4 text-white" />
-            <span>Match Treaty Code</span>
-            {unboundCount > 0 && (
-              <span className="bg-white/20 text-white px-1.5 py-0.5 rounded-md text-[10px] ml-1">
-                {unboundCount}
-              </span>
-            )}
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+            <span>Refresh</span>
           </button>
 
           <button 
-            type="button"
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
+            type="button" 
+            disabled={!isTableExists}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed text-white font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Data</span>
-          </button>
-
-          <button type="button" className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer">
             <Download className="w-4 h-4" />
             <span>Export Excel</span>
           </button>
@@ -347,512 +219,279 @@ export default function FormFire() {
       {/* Main Table Card */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
         
-        {/* Search & Filter Bar Section */}
+        {/* Filter & Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           
           {/* Search Box */}
           <div className="relative w-full sm:w-80 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input 
-              type="text"
-              placeholder="Cari Cedant Code, Treaty, No Polis, Tertanggung..."
+              type="text" 
+              placeholder="Cari pada data halaman ini..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-2xs"
+              disabled={!isTableExists}
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-2xs"
             />
           </div>
 
-          {/* DROPDOWN FILTERS (CUSTOM SAAS DROPDOWNS) */}
           <div className="flex items-center gap-2.5 shrink-0">
             
-            {/* CUSTOM DROPDOWN 1: TIPE TRANSAKSI */}
-            <div className="relative" ref={typeDropdownRef}>
+            {/* DROPDOWN FILTER STATUS VALIDASI */}
+            <div className="relative" ref={statusDropdownRef}>
               <button
                 type="button"
-                onClick={() => {
-                  setOpenTypeDropdown(!openTypeDropdown);
-                  setOpenStatusDropdown(false);
-                }}
-                className={`flex items-center gap-2 bg-slate-50 border hover:bg-white text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer ${
-                  openTypeDropdown ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white' : 'border-slate-200'
+                disabled={!isTableExists}
+                onClick={() => setOpenStatusDropdown(!openStatusDropdown)}
+                className={`flex items-center gap-2 border px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                  filterStatus === 'WARNING' 
+                    ? 'bg-amber-50 text-amber-800 border-amber-300 ring-2 ring-amber-500/10' 
+                    : filterStatus === 'VALID' 
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                    : 'bg-slate-50 hover:bg-white text-slate-700 border-slate-200'
                 }`}
               >
                 <Filter className="w-3.5 h-3.5 text-slate-400" />
                 <span>
-                  {filterType === 'ALL' && `Semua Tipe (${dataList.length})`}
-                  {filterType === 'PREMIUM' && `Premi Fire (${dataList.filter(d => d.type === 'PREMIUM').length})`}
-                  {filterType === 'KLAIM' && `Klaim Fire (${dataList.filter(d => d.type === 'KLAIM').length})`}
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openTypeDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {openTypeDropdown && (
-                <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
-                  <button
-                    type="button"
-                    onClick={() => { setFilterType('ALL'); setOpenTypeDropdown(false); }}
-                    className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                      filterType === 'ALL' ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span>Semua Tipe ({dataList.length})</span>
-                    {filterType === 'ALL' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setFilterType('PREMIUM'); setOpenTypeDropdown(false); }}
-                    className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                      filterType === 'PREMIUM' ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      Premi Fire ({dataList.filter(d => d.type === 'PREMIUM').length})
-                    </span>
-                    {filterType === 'PREMIUM' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setFilterType('KLAIM'); setOpenTypeDropdown(false); }}
-                    className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                      filterType === 'KLAIM' ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-500" />
-                      Klaim Fire ({dataList.filter(d => d.type === 'KLAIM').length})
-                    </span>
-                    {filterType === 'KLAIM' && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* CUSTOM DROPDOWN 2: STATUS VALIDASI */}
-            <div className="relative" ref={statusDropdownRef}>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenStatusDropdown(!openStatusDropdown);
-                  setOpenTypeDropdown(false);
-                }}
-                className={`flex items-center gap-2 bg-slate-50 border hover:bg-white text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer ${
-                  openStatusDropdown ? 'border-blue-500 ring-2 ring-blue-500/10 bg-white' : 'border-slate-200'
-                }`}
-              >
-                <span>
-                  {filterStatus === 'ALL' && 'Semua Status'}
-                  {filterStatus === 'Valid' && `Valid (${dataList.filter(d => d.status === 'Valid').length})`}
-                  {filterStatus === 'Warning' && `Warning (${dataList.filter(d => d.status === 'Warning').length})`}
+                  {filterStatus === 'ALL' && `Semua Status (${validTotal + warningTotal})`}
+                  {filterStatus === 'VALID' && `Valid (${validTotal})`}
+                  {filterStatus === 'WARNING' && `Warning (${warningTotal})`}
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openStatusDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {openStatusDropdown && (
-                <div className="absolute right-0 mt-1.5 w-48 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
                   <button
                     type="button"
-                    onClick={() => { setFilterStatus('ALL'); setOpenStatusDropdown(false); }}
+                    onClick={() => handleStatusChange('ALL')}
                     className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
                       filterStatus === 'ALL' ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
                     }`}
                   >
-                    <span>Semua Status</span>
+                    <span>Semua Status ({validTotal + warningTotal})</span>
                     {filterStatus === 'ALL' && <Check className="w-3.5 h-3.5 text-blue-600" />}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setFilterStatus('Valid'); setOpenStatusDropdown(false); }}
+                    onClick={() => handleStatusChange('VALID')}
                     className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                      filterStatus === 'Valid' ? 'bg-emerald-50 text-emerald-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      filterStatus === 'VALID' ? 'bg-emerald-50 text-emerald-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
                     }`}
                   >
                     <span className="flex items-center gap-1.5 text-emerald-700">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      Valid ({dataList.filter(d => d.status === 'Valid').length})
+                      Valid ({validTotal})
                     </span>
-                    {filterStatus === 'Valid' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                    {filterStatus === 'VALID' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setFilterStatus('Warning'); setOpenStatusDropdown(false); }}
+                    onClick={() => handleStatusChange('WARNING')}
                     className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                      filterStatus === 'Warning' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      filterStatus === 'WARNING' ? 'bg-amber-50 text-amber-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
                     }`}
                   >
                     <span className="flex items-center gap-1.5 text-amber-700">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      Warning ({dataList.filter(d => d.status === 'Warning').length})
+                      Warning ({warningTotal})
                     </span>
-                    {filterStatus === 'Warning' && <Check className="w-3.5 h-3.5 text-amber-600" />}
+                    {filterStatus === 'WARNING' && <Check className="w-3.5 h-3.5 text-amber-600" />}
                   </button>
                 </div>
               )}
             </div>
 
+            {/* Dropdown Pilihan Tabel Fire */}
+            <div className="relative" ref={tableDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setOpenTableDropdown(!openTableDropdown)}
+                className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:bg-white text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer"
+              >
+                <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>
+                  {fireTables.find(t => t.id === selectedTable)?.label || selectedTable}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openTableDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {openTableDropdown && (
+                <div className="absolute right-0 mt-1.5 w-80 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+                  {fireTables.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handleTableChange(t.id)}
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
+                        selectedTable === t.id ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span>{t.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                        t.type === 'PREMIUM' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
+                      }`}>
+                        {t.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Selector Limit Baris */}
+            <select
+              value={limit}
+              disabled={!isTableExists}
+              onChange={(e) => setLimit(Number(e.target.value))}
+              className="bg-slate-50 border border-slate-200 text-slate-700 disabled:opacity-50 font-bold px-2.5 py-2 rounded-xl text-xs outline-none focus:bg-white cursor-pointer shadow-2xs"
+            >
+              <option value={25}>25 Baris</option>
+              <option value={50}>50 Baris</option>
+              <option value={100}>100 Baris</option>
+            </select>
           </div>
         </div>
 
-        {/* Table Container */}
-        <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs pb-1">
-          <table className="w-full text-left border-collapse whitespace-nowrap">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase font-bold tracking-wider">
-                <th className="p-3 text-center">Tipe Transaksi</th>
-                <th className="p-3">Cedant Code</th>
-                <th className="p-3">Treaty Code</th>
-                <th className="p-3">No. Polis</th>
-                <th className="p-3">LKP / No. Klaim</th>
-                <th className="p-3">Nama Tertanggung</th>
-                <th className="p-3">Cedant / Reinsured</th>
-                <th className="p-3 text-center">COB</th>
-                <th className="p-3">Okupasi & Lokasi Properti</th>
-                <th className="p-3">100% TSI</th>
-                <th className="p-3">100% Premium</th>
-                <th className="p-3">Nilai Klaim (Gross)</th>
-                <th className="p-3 text-center">Status Data</th>
-                <th className="p-3 text-center shrink-0">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-xs">
-              {filteredData.length > 0 ? (
-                filteredData.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                    
-                    {/* Tipe Transaksi Badge */}
-                    <td className="p-3 text-center">
-                      <span className={`font-bold px-2 py-0.5 rounded text-[10px] border ${
-                        item.type === 'PREMIUM' 
-                          ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                          : 'bg-rose-50 text-rose-700 border-rose-200'
-                      }`}>
-                        {item.type === 'PREMIUM' ? 'PREMI' : 'KLAIM'}
-                      </span>
-                    </td>
-
-                    {/* Cedant Code Badge */}
-                    <td className="p-3">
-                      <span className="inline-flex items-center gap-1 font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-[10px]">
-                        <Building2 className="w-3 h-3 text-slate-500" />
-                        {item.cedantCode || '-'}
-                      </span>
-                    </td>
-
-                    {/* Treaty Code Badge (Simulasi Badge Unbound / Linked) */}
-                    <td className="p-3">
-                      {item.treatyCode && item.treatyCode !== '-' && item.treatyCode !== 'Unbound' ? (
-                        <span className="font-mono font-bold text-blue-700 bg-blue-50/80 border border-blue-200 px-2 py-0.5 rounded text-[10px] animate-in zoom-in-95 duration-150">
-                          {item.treatyCode}
-                        </span>
-                      ) : (
-                        <span className="font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded text-[10px] inline-flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-amber-600" />
-                          Unbound
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Policy Number */}
-                    <td className="p-3 font-bold font-mono text-slate-800">
-                      {item.policyNumber}
-                    </td>
-
-                    {/* Claim Reff / LKP */}
-                    <td className="p-3 font-mono font-bold text-slate-600">
-                      {item.claimReffNumber}
-                    </td>
-
-                    {/* Insured Name */}
-                    <td className="p-3 font-bold text-slate-700">
-                      {item.insuredName}
-                    </td>
-
-                    {/* Cedant Name */}
-                    <td className="p-3 text-slate-600">
-                      {item.cedantName}
-                    </td>
-
-                    {/* COB Badge */}
-                    <td className="p-3 text-center">
-                      <span className="bg-rose-50 text-rose-600 border border-rose-200/80 font-bold px-2 py-0.5 rounded text-[10px]">
-                        {item.cob}
-                      </span>
-                    </td>
-
-                    {/* Occupation & Location */}
-                    <td className="p-3">
-                      <div className="font-semibold text-slate-800">{item.occupation}</div>
-                      <div className="text-[10px] text-slate-400">{item.location}</div>
-                    </td>
-
-                    {/* 100% TSI */}
-                    <td className="p-3 font-mono font-bold text-slate-800">
-                      {formatRupiah(item.tsi100)}
-                    </td>
-
-                    {/* 100% Premium */}
-                    <td className="p-3 font-mono font-bold text-emerald-600">
-                      {formatRupiah(item.premium100)}
-                    </td>
-
-                    {/* Claim Amount Gross */}
-                    <td className="p-3 font-mono font-bold text-rose-600">
-                      {formatRupiah(item.claimAmountGross)}
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="p-3 text-center">
-                      {item.status === 'Valid' ? (
-                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-md text-[10px] border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Valid
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 font-bold px-2.5 py-0.5 rounded-md text-[10px] border border-amber-200">
-                          <AlertTriangle className="w-3 h-3 text-amber-600" /> Warning
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Tombol Aksi Edit & Hapus */}
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(item)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer border border-transparent hover:border-blue-200"
-                          title="Edit Data"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(item)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer border border-transparent hover:border-rose-200"
-                          title="Hapus Data"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={14} className="p-8 text-center text-slate-400 italic">
-                    Tidak ada data Bordero FIRE yang cocok dengan filter.
-                  </td>
-                </tr>
+        {/* TAMPILAN EMPTY STATE ATAU TABEL */}
+        {!isTableExists ? (
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 py-16 px-4 text-center">
+            <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-blue-100">
+              <FolderOpen className="w-8 h-8" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-800 mb-1">Data Belum Tersedia</h3>
+            <p className="text-slate-500 max-w-md">
+              Tabel <strong className="text-blue-600 font-mono font-medium">{selectedTable}</strong> belum pernah diisi. Silakan lakukan proses ETL Bordero terlebih dahulu di menu Home untuk menampilkan data.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Tabel Live PostgreSQL */}
+            <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs pb-1 relative min-h-[350px]">
+              {loading && (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-20">
+                  <div className="flex items-center gap-2 text-blue-600 font-bold text-xs bg-white px-4 py-2 rounded-xl shadow-md border border-blue-50">
+                    <DatabaseZap className="w-4 h-4 animate-pulse" />
+                    <span>Memuat data PostgreSQL FIRE...</span>
+                  </div>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-[10px] uppercase font-bold tracking-wider">
+                    <th className="p-3 text-center border-r border-slate-100 bg-slate-100/60 sticky left-0 z-10">
+                      Status Data
+                    </th>
+                    {columns.map((colName) => (
+                      <th key={colName} className="p-3 border-r border-slate-100 last:border-r-0">
+                        {colName}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-xs">
+                  {filteredData.length > 0 ? (
+                    filteredData.map((row, rowIdx) => {
+                      const isWarning = row._status === 'WARNING';
+
+                      return (
+                        <tr 
+                          key={rowIdx} 
+                          className={`transition-colors ${isWarning ? 'bg-amber-50/30 hover:bg-amber-50/60' : 'hover:bg-blue-50/30'}`}
+                        >
+                          <td className="p-3 text-center border-r border-slate-100 sticky left-0 bg-white/95 backdrop-blur-xs">
+                            {isWarning ? (
+                              <span 
+                                title={`Kolom kosong: ${row._missingFields.join(', ')}`}
+                                className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px] border border-amber-300"
+                              >
+                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                Warning ({row._missingFields.length})
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded text-[10px] border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                Valid
+                              </span>
+                            )}
+                          </td>
+
+                          {columns.map((colName) => {
+                            const val = row[colName];
+                            const isNull = val === null || val === undefined || String(val).trim() === '' || String(val).toLowerCase() === 'nan';
+                            const isMissingMandatory = row._missingFields.includes(colName);
+
+                            return (
+                              <td 
+                                key={colName} 
+                                className={`p-3 border-r border-slate-50 last:border-r-0 ${
+                                  isMissingMandatory ? 'bg-amber-100/50 text-amber-900 font-bold' : ''
+                                }`}
+                              >
+                                {isNull ? (
+                                  <span className={`italic font-mono ${isMissingMandatory ? 'text-amber-700 font-bold underline decoration-wavy' : 'text-slate-300'}`}>
+                                    [NULL]
+                                  </span>
+                                ) : typeof val === 'number' ? (
+                                  <span className={`font-mono ${val < 0 ? 'text-rose-600 font-bold' : 'text-slate-700'}`}>
+                                    {val.toLocaleString('id-ID')}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-800">{String(val)}</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={columns.length + 1} className="p-8 text-center text-slate-400 italic">
+                        {loading ? 'Sedang memuat data...' : 'Tidak ada data yang sesuai dengan filter.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs text-slate-500">
+              <div>
+                Menampilkan <span className="font-bold text-slate-700">{filteredData.length}</span> dari{' '}
+                <span className="font-bold text-slate-700">{totalRows.toLocaleString()}</span> baris data
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600">
+                  Halaman <strong className="text-slate-800">{page}</strong> dari <strong className="text-slate-800">{totalPages}</strong>
+                </span>
+                <div className="flex items-center gap-1 ml-2">
+                  <button
+                    type="button"
+                    onClick={() => fetchFireData(selectedTable, page - 1, limit, filterStatus)}
+                    disabled={page <= 1 || loading}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fetchFireData(selectedTable, page + 1, limit, filterStatus)}
+                    disabled={page >= totalPages || loading}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
-
-      {/* MODAL FORM (CREATE / EDIT) - BEBAS TANPA REQUIRED */}
-      {modalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 text-sm">
-                {modalMode === 'ADD' ? 'Tambah Data Fire Baru' : 'Edit Data Fire'}
-              </h3>
-              <button 
-                onClick={() => setModalMode(null)}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleFormSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cedant Code (Opsional)</label>
-                  <select
-                    value={formData.cedantCode}
-                    onChange={(e) => setFormData({ ...formData, cedantCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white cursor-pointer"
-                  >
-                    <option value="CED-ASKRIDA">CED-ASKRIDA (Askrida)</option>
-                    <option value="CED-TRIPAKARTA">CED-TRIPAKARTA (Tripakarta)</option>
-                    <option value="CED-ACA">CED-ACA (Central Asia)</option>
-                    <option value="CED-BUANA">CED-BUANA (Buana Ind.)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Treaty Code Binding (Opsional)</label>
-                  <select
-                    value={formData.treatyCode}
-                    onChange={(e) => setFormData({ ...formData, treatyCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-blue-700 outline-none focus:bg-white cursor-pointer"
-                  >
-                    <option value="TRY-ASK-FIRE-2026">TRY-ASK-FIRE-2026 (Aktif)</option>
-                    <option value="TRY-TRI-FIRE-2026">TRY-TRI-FIRE-2026 (Aktif)</option>
-                    <option value="TRY-ACA-FIRE-2026">TRY-ACA-FIRE-2026 (Aktif)</option>
-                    <option value="TRY-BIA-FIRE-2026">TRY-BIA-FIRE-2026 (Aktif)</option>
-                    <option value="Unbound">Unbound (Belum Linked)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tipe Transaksi (Opsional)</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white cursor-pointer"
-                  >
-                    <option value="PREMIUM">PREMI</option>
-                    <option value="KLAIM">KLAIM</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status Validasi (Opsional)</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:bg-white cursor-pointer"
-                  >
-                    <option value="Valid" className="text-emerald-600 font-bold">Valid</option>
-                    <option value="Warning" className="text-amber-600 font-bold">Warning / Error</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">No. Polis (Opsional)</label>
-                  <input
-                    type="text"
-                    value={formData.policyNumber}
-                    onChange={(e) => setFormData({ ...formData, policyNumber: e.target.value })}
-                    placeholder="POL-FIRE-2026-xxx"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nama Tertanggung (Opsional)</label>
-                  <input
-                    type="text"
-                    value={formData.insuredName}
-                    onChange={(e) => setFormData({ ...formData, insuredName: e.target.value })}
-                    placeholder="PT / CV Tertanggung"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cedant / Reinsured (Opsional)</label>
-                  <input
-                    type="text"
-                    value={formData.cedantName}
-                    onChange={(e) => setFormData({ ...formData, cedantName: e.target.value })}
-                    placeholder="PT Asuransi xxx"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Okupasi Properti (Opsional)</label>
-                  <input
-                    type="text"
-                    value={formData.occupation}
-                    onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                    placeholder="Pabrik / Ruko / Gudang..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">100% TSI (Rp) (Opsional)</label>
-                  <input
-                    type="number"
-                    value={formData.tsi100 || ''}
-                    onChange={(e) => setFormData({ ...formData, tsi100: e.target.value })}
-                    placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">100% Premium (Rp) (Opsional)</label>
-                  <input
-                    type="number"
-                    value={formData.premium100 || ''}
-                    onChange={(e) => setFormData({ ...formData, premium100: e.target.value })}
-                    placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-800 outline-none focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setModalMode(null)}
-                  className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs cursor-pointer"
-                >
-                  {modalMode === 'ADD' ? 'Simpan Baru' : 'Simpan Perubahan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL KONFIRMASI HAPUS DATA */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-150 p-4">
-          <div className="bg-white rounded-2xl p-5 max-w-xs w-full shadow-2xl border border-slate-100 text-center space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="w-11 h-11 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100 shadow-2xs">
-              <AlertCircle className="w-6 h-6 text-rose-600" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="font-bold text-slate-800 text-sm">Hapus Data Fire?</h3>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Cedant: <strong className="text-slate-800 font-mono">{deleteTarget.cedantCode}</strong><br />
-                Treaty: <strong className="text-blue-600 font-mono">{deleteTarget.treatyCode}</strong><br />
-                No. Polis: <strong className="text-slate-800 font-mono">{deleteTarget.policyNumber}</strong>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                className="w-1/2 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteConfirm}
-                className="w-1/2 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all shadow-xs cursor-pointer"
-              >
-                Ya, Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
