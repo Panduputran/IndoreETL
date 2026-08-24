@@ -12,6 +12,7 @@ import FormKredit from './pages/form/FormKredit';
 import MasterMapping from './pages/MasterMapping';
 import FormIpr from './pages/FormIpr';
 import Dashboard from './pages/Dashboard';
+import UserGuide from './pages/UserGuide'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/master/mapping" element={<MasterMapping />} />
             <Route path="/form-ipr" element={<FormIpr />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/user-guide" element={<UserGuide />} />
           </Route>
         </Routes>
       </SidebarProvider>

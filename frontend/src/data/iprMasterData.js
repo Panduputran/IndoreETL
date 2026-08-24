@@ -1,4 +1,4 @@
-// src/data/iprMasterData.js (atau dimasukkan ke mappingData.js)
+// src/data/iprMasterData.js
 
 export const iprMasterColumns = [
   { no: 1, key: 'NO', label: 'No', type: 'NUMBER', isMandatory: false, description: 'Nomor Urut Data' },
@@ -34,7 +34,7 @@ export const iprMasterColumns = [
   { no: 31, key: 'SOURCE_DIRECT_INWARD', label: 'SOURCE (DIRECT/INWARD)', type: 'STRING', isMandatory: true, description: 'Sumber Bisnis (Direct / Inward)' },
   { no: 32, key: 'ENDORSEMENT_YES_NO', label: 'ENDORSEMENT (YES/ NO)', type: 'STRING', isMandatory: true, description: 'Status Endosemen (YES / NO)' },
   { no: 33, key: 'EFFECTIVE_DATE_ENDORSEMENT', label: 'Effective Date of Endorsement', type: 'TIMESTAMP', isMandatory: false, description: 'Tanggal Efektif Endosemen' },
-  { no: 34, key: 'DESCRIPTION', label: 'Description', type: 'STRING', isMandatory: false, description: 'Keterangan Tambahan Poli' },
+  { no: 34, key: 'DESCRIPTION', label: 'Description', type: 'STRING', isMandatory: false, description: 'Keterangan Tambahan Polis' },
   { no: 35, key: 'CEDANT_SHARE_PERCENT', label: "CEDANT'S SHARE (%)", type: 'DECIMAL (0.01)', isMandatory: true, description: 'Persentase Share Cedant' },
   { no: 36, key: 'CEDANT_SHARE_AMOUNT', label: "CEDANT'S SHARE (IN AMOUNT)", type: 'DECIMAL (0.01)', isMandatory: true, description: 'Nilai Nominal Share Cedant' },
   { no: 37, key: 'TOTAL_CO_INSURANCE_PANELS', label: 'TOTAL CO-INSURANCE PANELS', type: 'NUMBER', isMandatory: false, description: 'Jumlah Panel Ko-Asuransi' },
