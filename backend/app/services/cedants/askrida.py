@@ -9,7 +9,7 @@ from app.utils.helpers import read_excel_dynamic_header, validate_dates
 
 def match_pattern(patterns: list, text: str) -> bool:
     """Helper untuk mencocokkan kata menggunakan regex berbatas kata (word boundary)."""
-    return any(re.search(rf"\b{p}\b", text, re.IGNORECASE) for p in patterns)
+    return any(re.search(rf"\b{p}\b", str(text), re.IGNORECASE) for p in patterns)
 
 
 class AskridaETL(BaseCedantETL):
@@ -21,16 +21,16 @@ class AskridaETL(BaseCedantETL):
         all_data = []
 
         sheets_to_process = excel_file.sheet_names
-        if target_sheet and target_sheet.lower().strip() != "all":
-            sheets_to_process = [s for s in excel_file.sheet_names if s.lower().strip() == target_sheet.lower().strip()]
+        if target_sheet and str(target_sheet).lower().strip() != "all":
+            sheets_to_process = [s for s in excel_file.sheet_names if str(s).lower().strip() == str(target_sheet).lower().strip()]
 
         for sheet_name in sheets_to_process:
-            sheet_clean = sheet_name.strip().upper()
+            sheet_clean = str(sheet_name).strip().upper()
             if "QS" not in sheet_clean or ("PREMI" not in sheet_clean and "PREMIUM" not in sheet_clean):
                 continue
 
-            match_tw = re.search(r'TW\s*([1-4])', sheet_name, re.IGNORECASE) or re.search(r'TW\s*([1-4])', file_path, re.IGNORECASE)
-            match_tahun = re.search(r'(20\d{2})', sheet_name) or re.search(r'(20\d{2})', file_path)
+            match_tw = re.search(r'TW\s*([1-4])', str(sheet_name), re.IGNORECASE) or re.search(r'TW\s*([1-4])', str(file_path), re.IGNORECASE)
+            match_tahun = re.search(r'(20\d{2})', str(sheet_name)) or re.search(r'(20\d{2})', str(file_path))
 
             tw_val = match_tw.group(1) if match_tw else "1"
             tahun_val = match_tahun.group(1) if match_tahun else "2016"
@@ -38,6 +38,8 @@ class AskridaETL(BaseCedantETL):
             reff_bordereaux = f"SOA {tahun_val} TW {tw_val}"
 
             df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
+            if df_raw.empty:
+                continue
 
             header_idx = None
             for idx in range(min(20, len(df_raw))):
@@ -50,10 +52,8 @@ class AskridaETL(BaseCedantETL):
                 header_idx = 8 if tahun_num <= 2015 else 5
 
             row_top = df_raw.iloc[header_idx].ffill().fillna('')
-            row_sub_str = " ".join([str(x).upper() for x in df_raw.iloc[header_idx + 1].values if pd.notna(x)])
-            row_level_3_str = ""
-            if (header_idx + 2) < len(df_raw):
-                row_level_3_str = " ".join([str(x).upper() for x in df_raw.iloc[header_idx + 2].values if pd.notna(x)])
+            row_sub_str = " ".join([str(x).upper() for x in df_raw.iloc[header_idx + 1].values if pd.notna(x)]) if (header_idx + 1) < len(df_raw) else ""
+            row_level_3_str = " ".join([str(x).upper() for x in df_raw.iloc[header_idx + 2].values if pd.notna(x)]) if (header_idx + 2) < len(df_raw) else ""
 
             if any(k in row_level_3_str for k in ["SUM", "PREMIUM", "PREMI", "NETTO", "COMM"]):
                 df_data = df_raw.iloc[header_idx + 3:].copy().reset_index(drop=True)
@@ -90,58 +90,58 @@ class AskridaETL(BaseCedantETL):
             for col in df_data.columns:
                 col_u = str(col).upper()
                 if col_u.startswith("REINDO_"):
-                    if "SUM" in col_u or "INSURED" in col_u or "TSI" in col_u: rename_map[col] = "reindo_sum_insured"
+                    if any(k in col_u for k in ["SUM", "INSURED", "TSI"]): rename_map[col] = "reindo_sum_insured"
                     elif "PREM" in col_u: rename_map[col] = "premi_indore_share"
                     elif "COMM" in col_u: rename_map[col] = "reindo_ri_comm"
                     elif "NET" in col_u: rename_map[col] = "reindo_netto"
                 elif col_u.startswith("REINSURER100_"):
-                    if "SUM" in col_u or "INSURED" in col_u or "TSI" in col_u: rename_map[col] = "100_reinsurer_sum_insured"
+                    if any(k in col_u for k in ["SUM", "INSURED", "TSI"]): rename_map[col] = "100_reinsurer_sum_insured"
                     elif "PREM" in col_u: rename_map[col] = "premi_reinsurer_share"
                     elif "COMM" in col_u: rename_map[col] = "100_reinsurer_ri_comm"
                     elif "NET" in col_u: rename_map[col] = "100_reinsurer_netto"
                 else:
                     if col_u in ["NR", "NO", "NR.", "NO."]: rename_map[col] = "no"
                     elif "LAHIR" in col_u or "BIRTH" in col_u: rename_map[col] = "tanggal_lahir"
-                    elif "POLICY DATE" in col_u or "POLICY_DATE" in col_u or "POLICY START" in col_u or "AKAD" in col_u: rename_map[col] = "tanggal_akad"
-                    elif "PERIOD START" in col_u or "PERIOD ST" in col_u or "PERIODE ST" in col_u or "INCEPT" in col_u or "START" in col_u: rename_map[col] = "period_of_insurance_start"
-                    elif "END" in col_u or "EXPIRY" in col_u or "PERIOD EN" in col_u or "PERIODE EN" in col_u: rename_map[col] = "period_of_insurance_end"
+                    elif any(k in col_u for k in ["POLICY DATE", "POLICY_DATE", "POLICY START", "AKAD"]): rename_map[col] = "tanggal_akad"
+                    elif any(k in col_u for k in ["PERIOD START", "PERIOD ST", "PERIODE ST", "INCEPT", "START"]): rename_map[col] = "period_of_insurance_start"
+                    elif any(k in col_u for k in ["END", "EXPIRY", "PERIOD EN", "PERIODE EN"]): rename_map[col] = "period_of_insurance_end"
                     elif "POLICY" in col_u or "POLIS" in col_u: rename_map[col] = "policy_number"
-                    elif "THE_INSURED" in col_u or "THE INSURED" in col_u or "BANK" in col_u or "CEDANT" in col_u: rename_map[col] = "nama_bank_tertanggung"
-                    elif "NAME_OF_INSURED" in col_u or "NAME OF INSURED" in col_u or "TERTANGGUNG" in col_u: rename_map[col] = "insured_name"
+                    elif any(k in col_u for k in ["THE_INSURED", "THE INSURED", "BANK", "CEDANT"]): rename_map[col] = "nama_bank_tertanggung"
+                    elif any(k in col_u for k in ["NAME_OF_INSURED", "NAME OF INSURED", "TERTANGGUNG"]): rename_map[col] = "insured_name"
                     elif "AGE" in col_u or "USIA" in col_u: rename_map[col] = "usia_saat_akad_tahun"
                     elif "UY" in col_u or "UW" in col_u: rename_map[col] = "uw_year"
                     elif "CURR" in col_u: rename_map[col] = "currency"
-                    elif "AMOUNT" in col_u or "PERTANGGUNGAN" in col_u or "TSI" in col_u: rename_map[col] = "nilai_pertanggungan"
+                    elif any(k in col_u for k in ["AMOUNT", "PERTANGGUNGAN", "TSI"]): rename_map[col] = "nilai_pertanggungan"
                     elif "PREMIUM" in col_u or "PREMI" in col_u: rename_map[col] = "premi_original"
 
             df_data.rename(columns=rename_map, inplace=True)
             df_data = df_data.loc[:, ~df_data.columns.duplicated()]
 
-            df_data["cob"] = "CREDIT"
+            cob_val = str(override_cob).strip().upper() if (override_cob and str(override_cob).strip().lower() != "string") else "CREDIT"
+            df_data["cob"] = cob_val
             df_data["reff_of_no_bordereaux"] = reff_bordereaux
             df_data["period"] = periode_lengkap
 
-            master_cols = MASTER_COLUMNS_PREMI["askrida"]
+            master_cols = MASTER_COLUMNS_PREMI.get("askrida", [])
             for col_name in master_cols:
                 if col_name not in df_data.columns:
                     df_data[col_name] = np.nan
 
-            df_data = df_data[master_cols]
+            df_data = df_data[master_cols].copy()
 
             # -------------------------------------------------------------
-            # FILTER DATA VALID (ZERO-DROP: AMAN UNTUK BARIS 58.732)
+            # FILTER DATA VALID
             # -------------------------------------------------------------
-            # 1. Bersihkan string spasi kosong
             for check_col in ["policy_number", "insured_name", "no"]:
                 if check_col in df_data.columns:
                     df_data[check_col] = df_data[check_col].replace(r'^\s*$', np.nan, regex=True)
 
-            # 2. Hanya buang baris jika nomor polis, nama, dan no urut KETIGA-TIGANYA kosong murni
-            df_data = df_data.dropna(subset=["policy_number", "insured_name", "no"], how="all")
+            check_subset = [c for c in ["policy_number", "insured_name", "no"] if c in df_data.columns]
+            if check_subset:
+                df_data = df_data.dropna(subset=check_subset, how="all")
 
-            # 3. Hanya buang baris teks rekapitulasi/total
             trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY)\s*$'
-            if "policy_number" in df_data.columns:
+            if "policy_number" in df_data.columns and not df_data.empty:
                 p_str = df_data["policy_number"].astype(str).str.upper().str.strip()
                 df_data = df_data[~p_str.str.match(trash_exact_pattern, na=False)]
 
@@ -149,32 +149,28 @@ class AskridaETL(BaseCedantETL):
                 all_data.append(df_data)
 
         if not all_data:
-            return pd.DataFrame(columns=MASTER_COLUMNS_PREMI["askrida"])
+            return pd.DataFrame(columns=MASTER_COLUMNS_PREMI.get("askrida", []))
 
         df_final = pd.concat(all_data, ignore_index=True)
 
         # -------------------------------------------------------------
-        # SANITASI TIPE DATA PREMI SECARA PRESISI & ANTI NOTASI SAINTIFIK
+        # SANITASI TIPE DATA PREMI
         # -------------------------------------------------------------
-        
-        # 1. Identitas (policy_number, no)
         for id_col in ['policy_number', 'no']:
             if id_col in df_final.columns:
                 df_final[id_col] = df_final[id_col].apply(
                     lambda x: f"{int(x)}" if isinstance(x, (int, float)) and pd.notna(x) and not np.isnan(x) and x % 1 == 0
                     else (f"{x:.0f}" if isinstance(x, float) and pd.notna(x) and not np.isnan(x) else str(x if pd.notna(x) else ""))
                 )
-                df_final[id_col] = df_final[id_col].str.replace(r'\.0$', '', regex=True).str.strip()
+                df_final[id_col] = df_final[id_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                 df_final[id_col] = df_final[id_col].replace(['nan', 'None', 'NaN', '0', ''], None)
 
-        # 2. Tanggal (tanggal_akad, period start & end, tanggal_lahir)
         date_cols = ['tanggal_akad', 'period_of_insurance_start', 'period_of_insurance_end', 'tanggal_lahir']
         for col in date_cols:
             if col in df_final.columns:
                 df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN'], np.nan)
                 df_final[col] = pd.to_datetime(df_final[col], errors='coerce')
 
-        # 3. Kolom Uang / Nominal (Float Murni)
         numeric_cols = [
             'nilai_pertanggungan', 'premi_original', 'reindo_sum_insured',
             'premi_indore_share', 'reindo_ri_comm', 'reindo_netto',
@@ -192,14 +188,12 @@ class AskridaETL(BaseCedantETL):
                     )
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0.0)
 
-        # 4. Integer (usia, uw_year)
         int_cols = ['usia_saat_akad_tahun', 'uw_year']
         for col in int_cols:
             if col in df_final.columns:
                 df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN', '', None], np.nan)
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
 
-        # 5. String / Teks
         exclude_from_str = date_cols + numeric_cols + int_cols + ['policy_number', 'no']
         str_target_cols = [c for c in df_final.columns if c not in exclude_from_str]
 
@@ -207,7 +201,7 @@ class AskridaETL(BaseCedantETL):
             df_final[col] = df_final[col].astype(str).str.upper().str.strip()
             df_final[col] = df_final[col].replace(['NAN', 'NONE', 'NULL', '<NA>', '0', '0.0', ''], None)
 
-        df_final = df_final.where(pd.notnull(df_final), None)
+        df_final = df_final.replace({np.nan: None, pd.NaT: None})
         return df_final
 
     @staticmethod
@@ -215,11 +209,10 @@ class AskridaETL(BaseCedantETL):
         excel_file = pd.ExcelFile(file_path)
         all_sheets = excel_file.sheet_names
 
-        # 1. Tentukan Sheet Target
-        if target_sheet and target_sheet.lower().strip() != "all":
-            matched_sheets = [s for s in all_sheets if s.lower().strip() == target_sheet.lower().strip()]
+        if target_sheet and str(target_sheet).lower().strip() != "all":
+            matched_sheets = [s for s in all_sheets if str(s).lower().strip() == str(target_sheet).lower().strip()]
         else:
-            matched_sheets = [s for s in all_sheets if 'klaim' in s.lower() or 'claim' in s.lower()]
+            matched_sheets = [s for s in all_sheets if 'klaim' in str(s).lower() or 'claim' in str(s).lower()]
 
         if not matched_sheets:
             matched_sheets = all_sheets[:1]
@@ -238,7 +231,6 @@ class AskridaETL(BaseCedantETL):
             if df_raw.empty:
                 continue
 
-            # Deteksi Baris Header Utama
             header_idx = None
             for idx in range(min(25, len(df_raw))):
                 row_str = " ".join([str(x).upper() for x in df_raw.iloc[idx].values if pd.notna(x)])
@@ -249,7 +241,6 @@ class AskridaETL(BaseCedantETL):
             if header_idx is None:
                 header_idx = 5
 
-            # Penggabungan Header Bertingkat (Top Header + Sub Header)
             row_top = df_raw.iloc[header_idx].ffill().fillna('')
             row_sub = df_raw.iloc[header_idx + 1].fillna('') if (header_idx + 1) < len(df_raw) else pd.Series([''] * df_raw.shape[1])
             
@@ -277,11 +268,9 @@ class AskridaETL(BaseCedantETL):
 
             df_data.columns = combined_headers
 
-            # Pemetaan Kolom Universal
             rename_map = {}
             for col in df_data.columns:
                 c = str(col).lower().strip()
-
                 if any(k in c for k in ["reindo", "indore", "riu", "paid_claim_1"]):
                     rename_map[col] = "paid_claims_indore_share"
                 elif any(k in c for k in ["100%", "100 percent", "100percent", "reinsurer", "paid_claim"]):
@@ -322,7 +311,6 @@ class AskridaETL(BaseCedantETL):
 
             df_clean = df_data.rename(columns=rename_map)
 
-            # Resolusi Kolom Duplikat
             unique_cols = {}
             for col_name in df_clean.columns:
                 if col_name not in unique_cols:
@@ -332,13 +320,11 @@ class AskridaETL(BaseCedantETL):
                         unique_cols[col_name] = df_clean[col_name]
             df_clean = pd.DataFrame(unique_cols)
 
-            # Forward-fill data merged vertikal
             for m_col in ['reff_of_no_bordereaux', 'uw_year', 'period_of_insurance_start', 'period_of_insurance_end', 'nama_bank_tertanggung']:
                 if m_col in df_clean.columns:
                     df_clean[m_col] = df_clean[m_col].ffill()
 
-            # Filter data kosong & baris total
-            if 'policy_number' in df_clean.columns:
+            if 'policy_number' in df_clean.columns and not df_clean.empty:
                 df_clean = df_clean.dropna(subset=['policy_number'])
                 p_str = df_clean['policy_number'].astype(str).str.strip().str.upper()
                 df_clean = df_clean[~p_str.str.contains(r'TOTAL|^0$|^NAN$|^NONE$', regex=True, na=False)]
@@ -350,7 +336,8 @@ class AskridaETL(BaseCedantETL):
             return pd.DataFrame(columns=TARGET_COLUMNS)
 
         df_final = pd.concat(list_df, ignore_index=True)
-        df_final['cob'] = "CREDIT"
+        cob_val = str(override_cob).strip().upper() if (override_cob and str(override_cob).strip().lower() != "string") else "CREDIT"
+        df_final['cob'] = cob_val
         df_final['period'] = periode_lengkap
 
         for col_name in TARGET_COLUMNS:
@@ -360,34 +347,29 @@ class AskridaETL(BaseCedantETL):
         df_final = df_final[TARGET_COLUMNS].copy()
 
         # -------------------------------------------------------------
-        # SANITASI TIPE DATA SECARA PRESISI
+        # SANITASI TIPE DATA KLAIM
         # -------------------------------------------------------------
-        
-        # 1. Kolom Identitas (policy_number, no)
         for id_col in ['policy_number', 'no']:
             if id_col in df_final.columns:
                 df_final[id_col] = df_final[id_col].apply(
                     lambda x: f"{int(x)}" if isinstance(x, (int, float)) and pd.notna(x) and not np.isnan(x) and x % 1 == 0
                     else (f"{x:.0f}" if isinstance(x, float) and pd.notna(x) and not np.isnan(x) else str(x if pd.notna(x) else ""))
                 )
-                df_final[id_col] = df_final[id_col].str.replace(r'\.0$', '', regex=True).str.strip()
+                df_final[id_col] = df_final[id_col].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                 df_final[id_col] = df_final[id_col].replace(['nan', 'None', 'NaN', '0', ''], None)
 
-        # 2. Claim Reff Number (NULL jika kosong/0)
         if 'claim_reff_number' in df_final.columns:
             df_final['claim_reff_number'] = df_final['claim_reff_number'].astype(str).str.strip()
             df_final['claim_reff_number'] = df_final['claim_reff_number'].replace(
                 ['nan', 'None', 'NaN', '0', '0.0', '00', ''], None
             )
 
-        # 3. Kolom Tanggal (Start, End, Loss)
         date_cols = ['period_of_insurance_start', 'period_of_insurance_end', 'date_of_loss']
         for col in date_cols:
             if col in df_final.columns:
                 df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN'], np.nan)
                 df_final[col] = pd.to_datetime(df_final[col], errors='coerce')
 
-        # 4. Kolom Uang / Nominal Float Murni
         numeric_cols = [
             'insured_amount', 'total_incurred_claim', 
             'paid_claims_reins_share', 'paid_claims_indore_share'
@@ -403,14 +385,12 @@ class AskridaETL(BaseCedantETL):
                     )
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0.0)
 
-        # 5. Kolom Integer (Didefinisikan SEBELUM exclude_from_str)
         int_cols = ['waktu_pertanggungan_bulan', 'uw_year']
         for col in int_cols:
             if col in df_final.columns:
                 df_final[col] = df_final[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN', '', None], np.nan)
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
 
-        # 6. Kolom Teks / Deskripsi
         exclude_from_str = date_cols + numeric_cols + int_cols + ['policy_number', 'claim_reff_number', 'no']
         str_target_cols = [c for c in df_final.columns if c not in exclude_from_str]
 
@@ -418,5 +398,5 @@ class AskridaETL(BaseCedantETL):
             df_final[col] = df_final[col].astype(str).str.upper().str.strip()
             df_final[col] = df_final[col].replace(['NAN', 'NONE', 'NULL', '<NA>', '0', '0.0', ''], None)
 
-        df_final = df_final.where(pd.notnull(df_final), None)
+        df_final = df_final.replace({np.nan: None, pd.NaT: None})
         return df_final

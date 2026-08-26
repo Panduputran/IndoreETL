@@ -38,50 +38,29 @@ def sanitize_column_name(col_name: str) -> str:
 
 
 def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
-    """Pemetaan tipe data universal: prioritaskan ID/Tanggal/Uang, sisanya TEXT."""
+    """
+    Pemetaan tipe data universal yang selaras dengan loader.py:
+    - Kolom Angka / Uang / Share -> NUMERIC(20, 2)
+    - Kolom No / ID / Tenor -> BIGINT
+    - SEMUA Tanggal & Teks Bebas -> TEXT (Anti Error Limit & Out of Range)
+    """
     col_clean = sanitize_column_name(col_name)
 
-    # 1. Nomor Urut Eksplisit -> INTEGER (123)
-    if col_clean in ["no", "nomor", "seq", "id_seq", "no_urut"]:
-        return "INTEGER"
-
-    # 2. Tanggal / Waktu -> TIMESTAMP
-    date_list = [
-        "sdate", "edate", "sdate_master_policy", "date_of_loss", "start_period", 
-        "end_period", "period_of_insurance_start", "period_of_insurance_end", 
-        "underwriting_date", "inception_date", "expiry_date", "tanggal_akad", 
-        "dob", "dol", "date_of_accident", "date_of_claim"
-    ]
-    if col_clean in date_list or any(k in col_clean for k in ["date", "tanggal", "incept", "expiry", "_at"]):
-        return "TIMESTAMP"
-
-    # 3. Nilai Uang / Angka / Desimal / Share / Rate -> DOUBLE PRECISION (123)
-    num_list = [
-        "tsi_100", "ourshare", "exposure", "premium", "commission", "net", "roe",
-        "tsi", "sum_insured", "gross_premium", "ri_comm", "net_premium",
-        "our_share_percent", "reinsurer_share_percent", "claim_amount_100", "reinsurance_claim",
-        "nilai_pertanggungan", "premi_indore_share", "reindo_netto", "incurred", "loss",
-        "reindo_sum_insured", "reindo_ri_comm", "biaya_administrasi", "rate",
-        "claim_amount", "paid_claim", "outstanding_claim", "deductible", "salvage", "fac_tsi", "fac_premium"
-    ]
-    if col_clean in num_list or any(k in col_clean for k in ["amount", "claim", "premi", "premium", "comm", "share", "rate", "tarif", "biaya", "tsi", "netto", "gross", "exposure", "roe", "salvage"]):
-        return "DOUBLE PRECISION"
-
-    # 4. Durasi / Angka Bulat -> BIGINT
-    if any(k in col_clean for k in ["tahun", "bulan", "usia", "age", "tenor"]):
+    # 1. Kolom Bilangan Bulat Urut -> BIGINT
+    int_cols = {'no', 'id', 'uw_year', 'tahun', 'waktu_pertanggungan_bulan', 'tenor', 'usia_saat_akad_tahun', 'seq'}
+    if col_clean in int_cols:
         return "BIGINT"
 
-    # 5. Nomor Identitas / Kode Pendek / Label Periode -> VARCHAR(255)
-    id_list = [
-        "policyno", "policy_no", "endorsement", "id", "treatytype", "treaty_id",
-        "treaty_year", "treatyyear", "class_of_business", "cob", "type_of_cover",
-        "currency", "period", "number", "code", "kode", "claim_no", 
-        "register_no", "reff_of_no_bordereaux", "no_peserta", "no_polis", "status"
+    # 2. Kolom Angka Keuangan / Uang / Share -> NUMERIC(20, 2)
+    money_keywords = [
+        'amount', 'claim', 'premi', 'premium', 'tsi', 'sum_insured',
+        'share_percent', 'our_share', 'reinsurer_share', 'comm', 'netto',
+        'incurred', 'loss_scaled', 'paid_claim', 'exposure', 'net', 'roe', 'rate'
     ]
-    if col_clean in id_list or col_clean == "period":
-        return "VARCHAR(255)"
+    if any(mk in col_clean for mk in money_keywords) and not any(tx in col_clean for tx in ['event', 'cause', 'desc', 'note', 'type', 'name', 'occupation']):
+        return "NUMERIC(20, 2)"
 
-    # 6. SEMUA KOLOM TEKS LAINNYA (occupation, insured_name, address, remarks, dll) -> TEXT
+    # 3. SEMUA Kolom Tanggal, Polis, dan Teks Bebas -> WAJIB TEXT
     return "TEXT"
 
 
@@ -238,6 +217,9 @@ def check_target_table_in_db(
         schema_suggestions = []
         for col in master_cols:
             clean_col = sanitize_column_name(col)
+            # Jangan sertakan 'id' di master column suggestion agar tidak bentrok dengan id SERIAL PK
+            if clean_col == "id":
+                continue
             suggested_type = infer_sql_type_dynamically(clean_col)
             schema_suggestions.append(
                 {"column_name": clean_col, "suggested_sql_type": suggested_type}
@@ -257,12 +239,16 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     column_definitions = []
     for col in schema_ddl:
         safe_col_name = sanitize_column_name(col["column_name"])
+        if safe_col_name == "id":
+            continue
         sql_type = col.get("suggested_sql_type") or infer_sql_type_dynamically(safe_col_name)
         column_definitions.append(f'"{safe_col_name}" {sql_type}')
 
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS "{table_name}" (
-        {", ".join(column_definitions)}
+        id SERIAL PRIMARY KEY,
+        {", ".join(column_definitions)},
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """
 
@@ -272,5 +258,5 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
     return {
         "status": "success",
         "table_name": table_name,
-        "message": f"Tabel '{table_name}' berhasil dibuat murni dari kolom Excel!",
+        "message": f"Tabel '{table_name}' berhasil dibuat dengan skema seragam!",
     }

@@ -26,8 +26,11 @@ class BuanaIndependentETL:
 
     @staticmethod
     def process_premi(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
-        master_cols = MASTER_COLUMNS_PREMI["buanaindependent"]
+        master_cols = MASTER_COLUMNS_PREMI.get("buanaindependent", [])
         df = read_excel_dynamic_header(file_path, target_sheet)
+        if df is None or df.empty:
+            return pd.DataFrame(columns=master_cols)
+
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
         # 1. Mapping Header Excel Buana Independent
@@ -76,7 +79,7 @@ class BuanaIndependentETL:
             df.drop(columns=['unnamed_0'], inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 2. FILTER BARIS SAMPAH & FOOTER TOTAL (HANYA AMBIL DATA YANG PUNYA NOMOR POLIS VALID)
+        # 2. Filter Baris Sampah & Total
         if 'policy_number' in df.columns:
             df = df.dropna(subset=['policy_number'])
             trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
@@ -86,14 +89,14 @@ class BuanaIndependentETL:
             df = df[pd.to_numeric(df['no'], errors='coerce').notnull()]
 
         # 3. Handle Reinsurer Share (QS vs SPL)
+        sheet_lower = str(target_sheet).lower().strip()
         if "premium_reinsurer_share" in df.columns:
-            sheet_lower = target_sheet.lower().strip()
             if "qs" in sheet_lower:
                 df["premium_reinsurer_share_qs"] = df["premium_reinsurer_share"]
-                df["premium_reinsurer_share_spl"] = None
+                df["premium_reinsurer_share_spl"] = 0.0
             elif "spl" in sheet_lower or "surplus" in sheet_lower:
                 df["premium_reinsurer_share_spl"] = df["premium_reinsurer_share"]
-                df["premium_reinsurer_share_qs"] = None
+                df["premium_reinsurer_share_qs"] = 0.0
             df.drop(columns=["premium_reinsurer_share"], inplace=True)
 
         df['period'] = periode_lengkap
@@ -105,54 +108,54 @@ class BuanaIndependentETL:
             if 'cob_type_of_cover' in df.columns and df['cob_type_of_cover'].astype(str).str.upper().str.contains('PREMIUM').any():
                 df['cob_type_of_cover'] = "FIRE"
 
-        # 4. PARSING TANGGAL DAN PAKSA KE TIPE DATETIME NYATA
+        # 4. Parsing Tanggal
         date_cols = ["period_of_insurance_start", "period_of_insurance_end"]
         for dcol in date_cols:
             if dcol in df.columns:
                 def clean_buana_date(val):
                     if pd.isna(val) or val is None:
-                        return pd.NaT
+                        return None
                     if isinstance(val, (pd.Timestamp, np.datetime64)):
-                        return pd.to_datetime(val)
+                        return pd.to_datetime(val).strftime('%Y-%m-%d')
 
                     val_str = str(val).strip()
-                    if val_str.lower() in ['', 'nan', 'nat', 'none', 'null', '-', '0']:
-                        return pd.NaT
+                    if val_str.lower() in ['', 'nan', 'nat', 'none', 'null', '-', '0', '0.0']:
+                        return None
 
-                    # Bersihkan angka
                     clean_num_str = val_str.replace(',', '').replace('.0', '')
                     try:
                         num_v = float(clean_num_str)
                         if 30000 <= num_v <= 65000:
-                            return pd.to_datetime('1899-12-30') + pd.to_timedelta(num_v, unit='D')
+                            return (pd.to_datetime('1899-12-30') + pd.to_timedelta(num_v, unit='D')).strftime('%Y-%m-%d')
                         else:
-                            return pd.NaT
+                            return None
                     except ValueError:
                         pass
 
-                    # Parse teks biasa
-                    dt_obj = pd.to_datetime(val_str, errors='coerce')
+                    dt_obj = pd.to_datetime(val_str, errors='coerce', dayfirst=True)
                     if pd.isna(dt_obj) or dt_obj.year < 1900 or dt_obj.year > 2500:
-                        return pd.NaT
-                    return dt_obj
+                        return None
+                    return dt_obj.strftime('%Y-%m-%d')
 
                 df[dcol] = df[dcol].apply(clean_buana_date)
 
         # 5. Sinkronisasi dengan Master Columns
-        for col in master_cols:
-            if col not in df.columns:
-                df[col] = np.nan
+        if master_cols:
+            for col in master_cols:
+                if col not in df.columns:
+                    df[col] = None
+            df_clean = df[master_cols].copy()
+        else:
+            df_clean = df.copy()
 
-        df_clean = df[master_cols].copy()
-
-        # 6. Sanitasi ID / Text Columns (HANYA KOLOM STRING MURNI)
+        # 6. Sanitasi Kolom String
         string_cols = ["reinsured", "policy_number", "insured_name", "cob_type_of_cover", "currency", "occupation_code", "occupation", "location", "zip_code", "new_renewal", "period"]
         for scol in string_cols:
             if scol in df_clean.columns:
                 df_clean[scol] = df_clean[scol].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                df_clean[scol] = df_clean[scol].replace(['nan', 'None', 'NaN', 'NaT', '<NA>', ''], np.nan)
+                df_clean[scol] = df_clean[scol].replace(['nan', 'None', 'NaN', 'NaT', '<NA>', ''], None)
 
-        # 7. Sanitasi Numerik (Format Akuntansi & Angka Kurung)
+        # 7. Sanitasi & Penguncian Tipe Data Numerik Mutlak
         num_cols = [
             "uw_year", "breakdown_of_si_md_building", "mb", "stock", "tpl", "bi", "other",
             "tsi_100", "cedants_share", "spreading_of_risk_or", "spreading_of_risk_qs",
@@ -160,42 +163,23 @@ class BuanaIndependentETL:
             "premium_rate", "premium_reinsurer_share_qs", "premium_reinsurer_share_spl"
         ]
 
-        def parse_accounting_number(val):
-            if pd.isna(val) or val is None:
-                return np.nan
-            if isinstance(val, (int, float)):
-                return float(val)
-
-            s = str(val).strip()
-            if s in ['', '-', 'NIL', 'nil', 'None', 'nan', 'NaN', '<NA>']:
-                return 0.0
-
-            is_negative = False
-            if s.startswith('(') and s.endswith(')'):
-                is_negative = True
-                s = s[1:-1].strip()
-
-            if '.' in s and ',' in s:
-                s = s.replace('.', '').replace(',', '.')
-            elif ',' in s and '.' not in s:
-                s = s.replace(',', '.')
-
-            s = s.replace(' ', '')
-
-            try:
-                num = float(s)
-                return -num if is_negative else num
-            except ValueError:
-                return np.nan
-
         for col in num_cols:
             if col in df_clean.columns:
-                df_clean[col] = df_clean[col].apply(parse_accounting_number)
+                # Konversi paksa: teks seperti 'NEW', '-', dll otomatis jadi NaN -> fillna 0.0 -> float murni
+                cleaned_num_series = (
+                    df_clean[col]
+                    .astype(str)
+                    .str.replace(r'[\(\)]', '', regex=True)
+                    .str.replace(',', '', regex=False)
+                    .str.replace(' ', '', regex=False)
+                    .str.strip()
+                )
+                df_clean[col] = pd.to_numeric(cleaned_num_series, errors='coerce').fillna(0.0).astype(float).round(2)
 
-        # 8. Cast Kolom 'no' ke Integer Murni
+        # 8. Cast Kolom 'no' ke Integer
         if "no" in df_clean.columns:
             clean_no = df_clean["no"].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df_clean["no"] = pd.to_numeric(clean_no, errors='coerce').astype('Int64')
+            df_clean["no"] = pd.to_numeric(clean_no, errors='coerce').fillna(0).astype('int64')
 
         return df_clean.reset_index(drop=True)
 

@@ -43,29 +43,13 @@ MASTER_COLUMNS_PREMI = {
 
 
 MASTER_COLUMNS_CLAIM = {
-    "askrida": [
-        "no",
-        "cob",
-        "claim_reff_number",
-        "policy_number",
-        "reff_of_no_bordereaux",
-        "nama_bank_tertanggung",
-        "insured_name",
-        "insured_amount",
-        "period_of_insurance_start",
-        "period_of_insurance_end",
-        "waktu_pertanggungan_bulan",
-        "uw_year",
-        "date_of_loss",
-        "cause_of_loss",
-        "currency",
-        "total_incurred_claim",
-        "paid_claims_reins_share",
-        "paid_claims_indore_share",
-        "note",
-        "period"
+    "aca": [
+       "claim_no","policy_number",
+       "class_of_business","period_of_insurance_start","period_of_insurance_end",
+       "start_period_master_policy","date_of_loss","cause_of_loss","claim_event",
+       "our_share_percent","reinsurer_share_percent","claim_amount_100","reinsurance_claim",
+       "object_info_1","object_info_2","treaty_id","treaty_year","reinsurer_id","period"
     ],
-    
     "buanaindependent": [
         "no", "claim_reff_no", "policy_number", "insured_name", "cob_type_of_cover",
         "risk_cat", "uw_year", "period_of_insurance_start", "period_of_insurance_end",

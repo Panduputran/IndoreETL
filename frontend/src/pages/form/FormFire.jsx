@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 
 export default function FormFire() {
-  // Daftar tabel khusus Class of Business (COB) FIRE
   const fireTables = [
     { id: 'premi_buanaindependent_fire', label: 'Bordero Premi Fire (Buana Independent)', type: 'PREMIUM' },
     { id: 'premi_tripakarta_fire', label: 'Bordero Premi Fire (Tripakarta)', type: 'PREMIUM' },
@@ -27,13 +26,11 @@ export default function FormFire() {
     { id: 'claim_aca_fire', label: 'Bordero Klaim Fire (ACA)', type: 'KLAIM' }
   ];
 
-  // Default langsung ke tabel yang sudah ada datanya
   const [selectedTable, setSelectedTable] = useState('premi_buanaindependent_fire');
   const [openTableDropdown, setOpenTableDropdown] = useState(false);
   const tableDropdownRef = useRef(null);
 
-  // State Filter Status Validasi (Dieksekusi di Backend SQL)
-  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'VALID' | 'WARNING'
+  const [filterStatus, setFilterStatus] = useState('ALL');
   const [openStatusDropdown, setOpenStatusDropdown] = useState(false);
   const statusDropdownRef = useRef(null);
 
@@ -42,10 +39,8 @@ export default function FormFire() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Status Keberadaan Tabel
   const [isTableExists, setIsTableExists] = useState(true);
 
-  // Pagination & Counts langsung dari Database
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
@@ -56,17 +51,26 @@ export default function FormFire() {
   // Kata kunci kolom wajib utama
   const mandatoryKeywords = [
     'policy', 'polis', 'insured', 'name', 
-    'tsi_100', 'premium_100', 'gross_premium',
-    'claim_amount', 'date_of_loss', 'dol'
+    'tsi', 'sum_insured', 'premium', 'premi', 'gross_premium',
+    'claim_no', 'claim_number', 'claim_amount', 'reinsurance_claim',
+    'cause_of_loss', 'cause', 'penyebab',
+    'date_of_loss', 'dol', 'loss_date', 'period_of_insurance_start',
+    'period_of_insurance_end', 'start_period', 'end_period'
   ];
 
-  // Kolom opsional yang DIKECUALIKAN dari Warning (termasuk SPL, QS, dan breakdown)
-  const excludedKeywords = [
-    'no', 'id', 'remarks', 'unnamed', 'notes', 'spl', 'surplus', 
-    'share_spl', 'share_qs', 'others', 'spreading', 'breakdown', 'mb', 'stock', 'tpl', 'bi'
+  // Kolom opsional yang DIKECUALIKAN
+  const exactExcludedColumns = new Set([
+    'no', 'id', 'remarks', 'unnamed', 'notes', 'object_info_1', 'object_info_2',
+    'treaty_id', 'treaty_year', 'reinsurer_id', 'claim_event',
+    'start_period_master_policy', 'our_share_percent', 'reinsurer_share_percent',
+    'created_at', 'period'
+  ]);
+
+  const excludedSubstrings = [
+    'spl', 'surplus', 'share_spl', 'share_qs', 'others', 'spreading',
+    'breakdown', 'mb', 'stock', 'tpl', 'bi'
   ];
 
-  // Fetch data dari FastAPI Endpoint
   const fetchFireData = async (tableName, targetPage = 1, currentLimit = limit, currentStatus = filterStatus) => {
     setLoading(true);
     try {
@@ -78,7 +82,6 @@ export default function FormFire() {
         }
       });
 
-      // Handle jika tabel belum pernah dibuat / kosong
       if (response.data.status === 'empty') {
         setIsTableExists(false);
         setDataList([]);
@@ -151,15 +154,23 @@ export default function FormFire() {
       const missingFields = [];
 
       columns.forEach((col) => {
-        const colLower = col.toLowerCase();
-        const isMatch = mandatoryKeywords.some(kw => colLower.includes(kw));
-        const isExcluded = excludedKeywords.some(ex => colLower.includes(ex));
-        const isMandatory = isMatch && !isExcluded;
+        const colLower = String(col).toLowerCase().trim();
+        
+        const isExcluded = exactExcludedColumns.has(colLower) || excludedSubstrings.some(sub => colLower.includes(sub));
+        const isMandatory = mandatoryKeywords.some(kw => colLower === kw || colLower.includes(kw)) && !isExcluded;
 
         const val = row[col];
-        const isNull = val === null || val === undefined || String(val).trim() === '' || String(val).toLowerCase() === 'nan' || String(val).toLowerCase() === '<na>';
+        const isNullOrEmpty = (
+          val === null ||
+          val === undefined ||
+          String(val).trim() === '' ||
+          String(val).toLowerCase() === 'nan' ||
+          String(val).toLowerCase() === '<na>' ||
+          String(val).toLowerCase() === 'none' ||
+          String(val).toLowerCase() === 'null'
+        );
 
-        if (isMandatory && isNull) {
+        if (isMandatory && isNullOrEmpty) {
           missingFields.push(col);
         }
       });
@@ -194,7 +205,6 @@ export default function FormFire() {
           </p>
         </div>
 
-        {/* Action Header Buttons */}
         <div className="flex items-center gap-2 shrink-0">
           <button 
             type="button"
@@ -222,7 +232,6 @@ export default function FormFire() {
         {/* Filter & Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           
-          {/* Search Box */}
           <div className="relative w-full sm:w-80 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input 
@@ -237,7 +246,7 @@ export default function FormFire() {
 
           <div className="flex items-center gap-2.5 shrink-0">
             
-            {/* DROPDOWN FILTER STATUS VALIDASI */}
+            {/* Dropdown Status */}
             <div className="relative" ref={statusDropdownRef}>
               <button
                 type="button"
@@ -302,7 +311,7 @@ export default function FormFire() {
               )}
             </div>
 
-            {/* Dropdown Pilihan Tabel Fire */}
+            {/* Dropdown Tabel */}
             <div className="relative" ref={tableDropdownRef}>
               <button
                 type="button"
@@ -339,7 +348,7 @@ export default function FormFire() {
               )}
             </div>
 
-            {/* Selector Limit Baris */}
+            {/* Selector Limit */}
             <select
               value={limit}
               disabled={!isTableExists}
@@ -353,7 +362,7 @@ export default function FormFire() {
           </div>
         </div>
 
-        {/* TAMPILAN EMPTY STATE ATAU TABEL */}
+        {/* Tampilan Empty State atau Tabel */}
         {!isTableExists ? (
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 py-16 px-4 text-center">
             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-blue-100">
@@ -366,7 +375,6 @@ export default function FormFire() {
           </div>
         ) : (
           <>
-            {/* Tabel Live PostgreSQL */}
             <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs pb-1 relative min-h-[350px]">
               {loading && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-20">
@@ -419,18 +427,18 @@ export default function FormFire() {
 
                           {columns.map((colName) => {
                             const val = row[colName];
-                            const isNull = val === null || val === undefined || String(val).trim() === '' || String(val).toLowerCase() === 'nan';
+                            const isNull = val === null || val === undefined || String(val).trim() === '' || String(val).toLowerCase() === 'nan' || String(val).toLowerCase() === 'none' || String(val).toLowerCase() === 'null';
                             const isMissingMandatory = row._missingFields.includes(colName);
 
                             return (
                               <td 
                                 key={colName} 
                                 className={`p-3 border-r border-slate-50 last:border-r-0 ${
-                                  isMissingMandatory ? 'bg-amber-100/50 text-amber-900 font-bold' : ''
+                                  isMissingMandatory ? 'bg-amber-100 text-amber-900 font-bold ring-1 ring-inset ring-amber-300' : ''
                                 }`}
                               >
                                 {isNull ? (
-                                  <span className={`italic font-mono ${isMissingMandatory ? 'text-amber-700 font-bold underline decoration-wavy' : 'text-slate-300'}`}>
+                                  <span className={`italic font-mono ${isMissingMandatory ? 'text-amber-800 font-bold underline decoration-wavy' : 'text-slate-300'}`}>
                                     [NULL]
                                   </span>
                                 ) : typeof val === 'number' ? (

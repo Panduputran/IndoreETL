@@ -1,22 +1,41 @@
+import re
 import numpy as np
 import pandas as pd
 from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM
 from app.utils.helpers import read_excel_dynamic_header, to_snake_case, validate_dates
 
+
 def format_id_column(val):
     """Konversi nilai ID/Nomor agar tidak menjadi eksponensial (e+16) atau berakhiran .0"""
-    if pd.isna(val):
-        return np.nan
+    if pd.isna(val) or val is None:
+        return None
     if isinstance(val, (float, np.floating)):
         if np.isnan(val) or np.isinf(val):
-            return np.nan
+            return None
         if val.is_integer():
             return f"{int(val)}"
         return f"{val:.0f}"
     val_str = str(val).strip()
-    if val_str.lower() in ["nan", "none", "nat", "null", ""]:
-        return np.nan
-    return val_str.replace(".0", "") if val_str.endswith(".0") else val_str
+    if val_str.lower() in ["nan", "none", "nat", "null", "<na>", ""]:
+        return None
+    return val_str[:-2] if val_str.endswith(".0") else val_str
+
+
+def clean_accounting_number(val):
+    """Pembersihan angka akuntansi (mendukung format koma, kurung negatif, dan whitespace)."""
+    if pd.isna(val) or val is None:
+        return 0.0
+    s = str(val).strip()
+    if s.lower() in ['', 'nan', 'none', 'null', '<na>', '-', 'nil']:
+        return 0.0
+    s = s.replace(',', '').replace(' ', '')
+    if s.startswith('(') and s.endswith(')'):
+        s = f"-{s[1:-1]}"
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 class ACAETL:
     """Modul khusus pemrosesan data ACA (Premi & Klaim)"""
@@ -27,10 +46,13 @@ class ACAETL:
 
         # 1. Baca Excel & Rename Kolom
         df = read_excel_dynamic_header(file_path, target_sheet)
+        if df is None or df.empty:
+            return pd.DataFrame(columns=master_cols)
+
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
         rename_mapping = {
-            'reinsurer_id': 'id', 'reinsurer_name': 'name', 'treaty_id': 'treatytype',
+            'reinsurer_id': 'reinsurer_id', 'reinsurer_name': 'name', 'treaty_id': 'treatytype',
             'treaty_type': 'treatytype', 'treaty_year': 'treatyyear', 'policyno': 'policyno',
             'policy_no': 'policyno', 'policy_number': 'policyno', 'endorsement_no': 'endorsement',
             'endorsement_no_': 'endorsement', 'endorsement_number': 'endorsement',
@@ -48,15 +70,15 @@ class ACAETL:
         df.rename(columns=rename_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 2. Filter Baris Sampah (Polis Kosong / Total)
+        # 2. Filter Baris Sampah
         if "policyno" in df.columns:
             df = df.dropna(subset=["policyno"])
-            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY)\s*$'
+            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
             pol_str = df["policyno"].astype(str).str.upper().str.strip()
             df = df[~pol_str.str.match(trash_exact_pattern, na=False)]
 
-        # 3. Penanganan Class of Business (Prioritas Excel)
-        cob_target = override_cob.strip().upper() if (override_cob and override_cob.strip().lower() != "string") else "FIRE"
+        # 3. Penanganan Class of Business
+        cob_target = override_cob.strip().upper() if (override_cob and str(override_cob).strip().lower() != "string") else "FIRE"
         if 'class_of_business' in df.columns:
             cob_clean = df['class_of_business'].astype(str).str.strip().replace(['nan', 'None', 'NaN', 'NaT', '<NA>', ''], np.nan)
             if cob_clean.notna().any():
@@ -68,60 +90,42 @@ class ACAETL:
 
         df['period'] = periode_lengkap
 
-        # -------------------------------------------------------------
-        # 4. SINKRONKAN DENGAN MASTER COLUMNS DULUAN (KUNCI UTAMA)
-        # -------------------------------------------------------------
-        # Agar kolom-kolom numerik / tanggal yang kosong otomatis masuk ke proses cast di bawah
+        # 4. Parsing Tanggal (Format ISO String YYYY-MM-DD)
+        date_cols = ['sdate', 'edate', 'sdate_master_policy']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+                df[col] = df[col].dt.strftime('%Y-%m-%d').replace(['NaT', 'nan', 'NaN', 'None', ''], None)
+
+        # 5. Sanitasi ID
+        id_cols = ['policyno', 'endorsement', 'id', 'treatytype', 'class_of_business', 'treatyyear']
+        for id_col in id_cols:
+            if id_col in df.columns:
+                df[id_col] = df[id_col].apply(format_id_column)
+
+        # 6. Sanitasi Angka / Nominal
+        num_cols = ["tsi_100", "ourshare", "exposure", "premium", "commission", "net", "roe"]
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = df[col].apply(clean_accounting_number)
+
+        # 7. Sanitasi Teks
+        exclude_from_str = date_cols + num_cols + id_cols
+        str_target_cols = [c for c in df.columns if c not in exclude_from_str]
+        for col in str_target_cols:
+            df[col] = df[col].astype(str).str.upper().str.strip()
+            df[col] = df[col].replace(['NAN', 'NONE', 'NULL', '<NA>', '0', '0.0', ''], None)
+
+        # 8. Sinkronisasi dengan Master Columns
         if master_cols:
             for col in master_cols:
                 if col not in df.columns:
-                    df[col] = np.nan
+                    df[col] = None
             df_clean = df[master_cols].copy()
         else:
             df_clean = df.copy()
 
-        # -------------------------------------------------------------
-        # 5. PEMAKSAAN TIPE DATA (Format angka & tanggal dijamin aman)
-        # -------------------------------------------------------------
-
-        # A. Kolom Identitas (String Murni Aman dari Notasi Ilmiah e+16)
-        id_cols = ['policyno', 'endorsement', 'id', 'treatytype', 'class_of_business', 'treatyyear']
-        for id_col in id_cols:
-            if id_col in df_clean.columns:
-                df_clean[id_col] = df_clean[id_col].apply(format_id_column)
-
-        # B. Kolom Tanggal -> Jadi TIMESTAMP
-        date_cols = ['sdate', 'edate', 'sdate_master_policy']
-        for col in date_cols:
-            if col in df_clean.columns:
-                df_clean[col] = df_clean[col].replace(['0', '0.0', 0, 0.0, 'nan', 'NaN'], np.nan)
-                df_clean[col] = pd.to_datetime(df_clean[col], errors='coerce')
-
-        # C. Kolom Nominal / Uang -> Jadi FLOAT 123 (DOUBLE PRECISION)
-        num_cols = ["tsi_100", "ourshare", "exposure", "premium", "commission", "net", "roe"]
-        for col in num_cols:
-            if col in df_clean.columns:
-                if df_clean[col].dtype == object:
-                    df_clean[col] = (
-                        df_clean[col]
-                        .astype(str)
-                        .str.replace(r'[^\d.-]', '', regex=True)
-                        .replace('', '0')
-                    )
-                # Fillna 0.0 inilah yang memancing DBeaver mengeset tabel jadi tipe Angka
-                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0.0)
-
-        # D. Kolom Teks -> Jadi VARCHAR A-Z
-        exclude_from_str = date_cols + num_cols + id_cols
-        str_target_cols = [c for c in df_clean.columns if c not in exclude_from_str]
-
-        for col in str_target_cols:
-            df_clean[col] = df_clean[col].astype(str).str.upper().str.strip()
-            df_clean[col] = df_clean[col].replace(['NAN', 'NONE', 'NULL', '<NA>', '0', '0.0', ''], None)
-
-        # Finalisasi
-        df_clean = df_clean.where(pd.notnull(df_clean), None)
-        return df_clean.reset_index(drop=True)
+        return df_clean.where(pd.notnull(df_clean), None).reset_index(drop=True)
 
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
@@ -129,9 +133,12 @@ class ACAETL:
 
         # 1. Baca Excel menggunakan dynamic header reader
         df = read_excel_dynamic_header(file_path, target_sheet)
+        if df is None or df.empty:
+            return pd.DataFrame(columns=master_cols)
+
         df.columns = [to_snake_case(str(col)) for col in df.columns]
 
-        # 2. Mapping Alias Header Excel Klaim ACA (Non Marine, Marine Hull, Marine Cargo)
+        # 2. Mapping Alias Header Excel Klaim ACA
         rename_mapping = {
             'claimno': 'claim_no',
             'claim_no': 'claim_no',
@@ -146,6 +153,8 @@ class ACAETL:
             'date_of_loss': 'date_of_loss',
             'cause_of_loss': 'cause_of_loss',
             'claim_event': 'claim_event',
+            'event': 'claim_event',
+            'catastrophe_event': 'claim_event',
             
             # Variasi ACA's Share (%)
             "aca's_share": 'our_share_percent',
@@ -170,7 +179,7 @@ class ACAETL:
         df.rename(columns=rename_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # 3. Sanitasi Kolom ID & String (Menjaga digit claim_no/policy_number tetap utuh tanpa format e+16)
+        # 3. Sanitasi Kolom ID & String
         id_cols = ['claim_no', 'policy_number', 'reinsurer_id', 'treaty_id', 'class_of_business', 'treaty_year']
         for id_col in id_cols:
             if id_col in df.columns:
@@ -178,18 +187,23 @@ class ACAETL:
 
         df['period'] = periode_lengkap
 
-        # 4. Override Class of Business jika ada
-        if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
-            if 'class_of_business' in df.columns:
-                df['class_of_business'] = override_cob.strip().upper()
+        # 4. Override Class of Business
+        if override_cob and str(override_cob).strip() and str(override_cob).strip().lower() != "string":
+            df['class_of_business'] = str(override_cob).strip().upper()
+        elif 'class_of_business' not in df.columns or df['class_of_business'].isna().all():
+            df['class_of_business'] = 'FIRE'
 
-        # 5. Validasi Tanggal
-        df = validate_dates(df)
+        # 5. Validasi Tanggal (Format ISO String YYYY-MM-DD)
+        date_cols = ['period_of_insurance_start', 'period_of_insurance_end', 'start_period_master_policy', 'date_of_loss']
+        for d_col in date_cols:
+            if d_col in df.columns:
+                df[d_col] = pd.to_datetime(df[d_col], errors='coerce', dayfirst=True)
+                df[d_col] = df[d_col].dt.strftime('%Y-%m-%d').replace(['NaT', 'nan', 'NaN', 'None', ''], None)
 
-        # 6. Filter Baris Sampah & Baris Total Rekap
+        # 6. Filter Baris Sampah
         if "claim_no" in df.columns:
             df = df.dropna(subset=["claim_no"])
-            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
+            trash_exact_pattern = r'^\s*(TOTAL|JUMLAH|GRAND\s*TOTAL|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE)\s*$'
             claim_str = df["claim_no"].astype(str).str.upper().str.strip()
             df = df[~claim_str.str.match(trash_exact_pattern, na=False)]
 
@@ -197,18 +211,21 @@ class ACAETL:
         num_cols = ["our_share_percent", "reinsurer_share_percent", "claim_amount_100", "reinsurance_claim"]
         for col in num_cols:
             if col in df.columns:
-                df[col] = pd.to_numeric(
-                    df[col].astype(str).str.replace(',', '').str.replace(' ', '').str.strip(),
-                    errors='coerce'
-                )
+                df[col] = df[col].apply(clean_accounting_number)
 
-        # 8. Sinkronkan dengan Master Kolom Config
+        # 8. Sanitasi Kolom Teks / Deskriptif
+        text_cols = ['claim_event', 'cause_of_loss', 'insured_name', 'object_info_1', 'object_info_2', 'note']
+        for col in text_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip().replace(['nan', 'None', 'NaN', 'NAN', '<NA>', '0', '0.0', ''], None)
+
+        # 9. Sinkronisasi dengan Master Columns
         if master_cols:
             for col in master_cols:
                 if col not in df.columns:
-                    df[col] = np.nan
+                    df[col] = None
             df_clean = df[master_cols].copy()
         else:
             df_clean = df.copy()
 
-        return df_clean.reset_index(drop=True)
+        return df_clean.where(pd.notnull(df_clean), None).reset_index(drop=True)
