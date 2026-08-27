@@ -1,3 +1,5 @@
+numpy
+python-calamine
 pandas
 sqlalchemy
 psycopg2-binary

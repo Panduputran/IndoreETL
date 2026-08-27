@@ -68,10 +68,10 @@ export default function Sidebar({ isBlocked = false }) {
           />
           <div className="flex flex-col">
             <span className="font-bold text-slate-900 text-base tracking-tight leading-none">
-              Indore
+              Indore Treaty RU
             </span>
             <span className="text-[10px] text-slate-400 font-semibold mt-0.5 tracking-wider uppercase">
-              Treaty System
+              ETL Pipeline
             </span>
           </div>
         </Link>
