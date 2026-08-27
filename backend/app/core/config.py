@@ -8,7 +8,6 @@ MASTER_COLUMNS_PREMI = {
         "currency", "premium", "commission", "net", "roe", "production",
         "objekinfo01", "objekinfo02", "period"
     ],
-    # Ganti nama 'end' menjadi 'period_of_insurance_end' di list tripakarta
     "tripakarta": [
         "no","cob",
         "reinsured","policy_number","insured_name","uw_year","currency","breakdown_of_si_md_building",
@@ -17,7 +16,7 @@ MASTER_COLUMNS_PREMI = {
         "cedant_s_share","spreading_of_risk_or","qs","surplus","others",
         "premium_100","premium_rate","premi_qs","comm_qs","premi_spl","comm_spl","marsh_re",
         "premium_qs_marsh_re_share","premium_spl_marsh_re_share","note",
-        "remarks","period","treaty_name_qs","treaty_name_surplus",
+        "remarks","period","treaty_name_qs","treaty_name_surplus",  
     ],
     "buanaindependent": [
         "no", "cob_type_of_cover", "reinsured", "policy_number", "insured_name",
@@ -29,7 +28,6 @@ MASTER_COLUMNS_PREMI = {
         "premium_rate", "premium_reinsurer_share_qs", "premium_reinsurer_share_spl",
         "new_renewal", "period"
     ],
-    # --- TAMBAHAN KHUSUS ASKRIDA (23 KOLOM TARGET + PERIOD) ---
     "askrida": [
         "no", "cob", "nama_bank_tertanggung", "insured_name", "tanggal_lahir",
         "policy_number", "uw_year", "tanggal_akad", "usia_saat_akad_tahun",

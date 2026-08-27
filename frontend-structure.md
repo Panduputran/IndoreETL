@@ -15,45 +15,48 @@ Aturan Arsitektur
 
 Struktur Direktori
 ==================
-
-.. code-block:: text
-
-    src/
-    ├── components/                 # Reusable Global UI Components
+   etl-indore-fe/
+├── .env                        # Variabel environment (misal: REACT_APP_API_BASE_URL)
+├── package.json                # Dependensi (react, axios, lucide-react, tailwindcss)
+├── tailwind.config.js          # Konfigurasi Tailwind & JSX parser
+├── vite.config.js              # Konfigurasi *bundler* Vite
+└── src/
+    ├── App.jsx                 # Routing utama aplikasi
+    ├── index.css               # Global styling
+    ├── main.jsx                # Entry point React
+    ├── api/
+    │   └── borderoApi.js       # Kumpulan fungsi pemanggilan endpoint Axios
+    ├── components/             # UI Components yang *reusable*
     │   ├── common/
-    │   │   └── EmptyState.jsx     # Placeholder UI untuk state kosong / unselected
-    │   ├── ui/
-    │   │   ├── Button.jsx         # Standardized Button component
-    │   │   └── Table.jsx          # Reusable Table primitives (Header, Body, Row, Cell)
-    │   └── Sidebar.jsx            # Main App Navigation (Collapsible Dropdowns & Active Routes)
-    │
-    ├── features/                  # Modular Feature Domains
-    │   ├── upload-etl/            # Core Wizard Module (ETL Upload Workflow)
-    │   │   ├── upload/
-    │   │   │   └── UploadWidget.jsx    # Phase 1: Upload & Drag-drop file (Select Cedant & Treaty)
-    │   │   ├── sheet-selection/
-    │   │   │   └── SheetSelector.jsx   # Phase 2A: Pemilihan Sheet (COB Filter)
-    │   │   ├── mapping/
-    │   │   │   ├── MappingTable.jsx    # Phase 2B: Konfigurasi Mapping Kolom DB (Target vs Source)
-    │   │   │   └── data/
-    │   │   │       └── mappingData.js  # Raw Headers & Preset Default Mapping (Tripakarta, ACA, Buana, Askrida)
-    │   │   ├── preview/
-    │   │   │   ├── PreviewTable.jsx    # Phase 3: Preview Data Transaksi IPR
-    │   │   │   └── ValidationBadge.jsx # Indicator Status (Valid / Warning / Error)
-    │   │   └── UploadProcess.jsx       # Main State Orchestrator (Phase 1 -> 2 -> 3)
-    │   │
-    │   └── history/               # Module History & Processing Logs
-    │       ├── HistoryView.jsx         # Container View untuk Riwayat Upload
-    │       ├── AdvancedFilter.jsx      # Filter Pencarian (Cedant Autocomplete & Date Range)
-    │       └── HistoryTable.jsx        # Log Table dengan Action Grid 2x2 & Compact Text Wrapping
-    │
-    └── pages/                     # Standalone Route Pages
-        ├── Dashboard.jsx          # Analytics & ETL Summary Statistics
-        ├── FormFire.jsx           # Data Viewer khusus COB FIRE (Bordero Cedant -> FIRE)
-        ├── FormKredit.jsx         # Data Viewer khusus COB KREDIT (Bordero Cedant -> CREDIT)
-        ├── IprMaster.jsx          # Pusat Standard Acuan Atribut IPR (Multi-Schema Dropdown Switcher)
-        └── MasterMapping.jsx      # Master Configuration Template Profile (Auto-Match Rules per Cedant)
-
+    │   │   └── EmptyState.jsx  # Tampilan saat data kosong
+    │   ├── context/
+    │   │   └── SidebarContext.jsx # Manajemen state navigasi sidebar
+    │   ├── layout/
+    │   │   ├── MainLayout.jsx  # Wrapper layout utama
+    │   │   └── Sidebar.jsx     # Navigasi menu kiri
+    │   └── ui/                 # Atomic UI (Button, Input, Table)
+    ├── constants/
+    │   └── data.js             # Master data statis (Daftar Cedant, COB, Periode)
+    ├── data/
+    │   └── iprMasterData.js    # Definisi 51 atribut standar skema IPR
+    ├── features/               # Modul terisolasi berdasarkan fungsionalitas
+    │   ├── bordero/            # Fitur pengelolaan dan riwayat bordero
+    │   ├── etl/                # Fitur terminal eksekusi ETL & logs
+    │   ├── mapping/            # Fitur UI untuk *dynamic column mapping*
+    │   ├── sheet-selection/    # Fitur seleksi *sheet* Excel
+    │   └── upload/             # Fitur *drag-and-drop* & *upload widget*
+    ├── pages/                  # Komponen halaman penuh (*Routed Views*)
+    │   ├── Dashboard.jsx       # Ringkasan data & analitik
+    │   ├── FormIpr.jsx         # Referensi Master IPR
+    │   ├── MasterMapping.jsx   # Halaman *self-service mapping*
+    │   ├── UploadBordero.jsx   # Halaman unggah berkas
+    │   ├── UserGuide.jsx       # Dokumentasi & FAQ sistem
+    │   └── form/
+    │       ├── FormFire.jsx    # Tabel live database COB Fire
+    │       └── FormKredit.jsx  # Tabel live database COB Kredit
+    └── utils/
+        ├── apiClient.js        # Konfigurasi global Axios (Timeout 5 menit)
+        └── fileUtils.js        # *Helper* regex nama file (Tahun, Kuartal, Kategori)
 Alur Proses (Workflow Phases)
 ==============================
 
