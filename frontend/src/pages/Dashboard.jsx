@@ -1,121 +1,167 @@
 import React from 'react';
-import { FileSpreadsheet, ShieldCheck, AlertTriangle, Building2, Clock } from 'lucide-react';
+import { 
+  FileSpreadsheet, 
+  ShieldCheck, 
+  AlertTriangle, 
+  Building2, 
+  Clock, 
+  Layers, 
+  TrendingUp,
+  ArrowUpRight,
+  Database
+} from 'lucide-react';
 
-// Data COB Murni (Class of Business Asuransi/Reasuransi)
 const COB_DATA = [
-  { name: 'Fire / Harta', bound: 1240, unbound: 45 },
-  { name: 'Marine Cargo', bound: 850, unbound: 12 },
-  { name: 'Property', bound: 620, unbound: 80 },
-  { name: 'Kredit', bound: 1450, unbound: 20 },
-  { name: 'Engineering', bound: 380, unbound: 15 },
+  { name: 'Fire', bound: 1240, unbound: 45, code: 'FIRE' },
+  { name: 'Marine Cargo', bound: 850, unbound: 12, code: 'CARGO' },
+  { name: 'Property', bound: 620, unbound: 80, code: 'PROP' },
+  { name: 'Kredit', bound: 1450, unbound: 20, code: 'CREDIT' },
+  { name: 'Engineering', bound: 380, unbound: 15, code: 'ENG' },
 ];
 
 const RECENT_ACTIVITIES = [
   {
-    title: 'Upload Bordero Fire Q1 2026',
-    cedant: 'CDT-001 (Askrida)',
-    time: '3:55 PM',
+    title: 'Upload Bordero Klaim Agustus 2024',
+    cedant: 'JAMKRIDA JABAR',
+    time: '10 mnt lalu',
     status: 'valid',
+    records: '1,450 baris'
   },
   {
-    title: 'Upload Bordero Marine Q2 2026',
-    cedant: 'CDT-002 (Takaful)',
-    time: '3:55 PM',
+    title: 'Upload Bordero Premi TW1 2025',
+    cedant: 'ASKRIDA',
+    time: '10:45 AM',
     status: 'valid',
+    records: '3,120 baris'
   },
   {
-    title: 'Upload Bordero Fire Q4 2025',
-    cedant: 'CDT-003 (Jasindo)',
+    title: 'Upload Bordero Fire Q4 2024',
+    cedant: 'TRIPAKARTA',
     time: 'Kemarin',
     status: 'warning',
+    records: '840 baris'
+  },
+  {
+    title: 'Upload Bordero Premi Juli 2024',
+    cedant: 'BUANA INDEPENDENT',
+    time: '2 hari lalu',
+    status: 'valid',
+    records: '620 baris'
   }
 ];
 
 export default function Dashboard() {
-  // Nilai maksimum untuk skala tinggi balok vertikal
   const maxVal = 1600;
+  const totalBound = COB_DATA.reduce((acc, curr) => acc + curr.bound, 0);
+  const totalUnbound = COB_DATA.reduce((acc, curr) => acc + curr.unbound, 0);
 
   return (
-    <div className="p-6 space-y-6 text-xs bg-slate-50 min-h-screen font-sans">
+    <div className="p-6 md:p-8 space-y-6 text-xs bg-slate-50/50 min-h-screen font-sans text-slate-800">
       
-      {/* HEADER SIMPLE */}
-      <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
+      {/* 1. HEADER COCKPIT */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
         <div>
-          <h1 className="text-lg font-bold text-slate-800 tracking-tight">Dashboard Overview</h1>
-          <p className="text-slate-400 text-[11px] mt-0.5">Ringkasan pemrosesan data Bordero IPR & Treaty.</p>
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
+              <Layers className="w-4 h-4" />
+            </span>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Executive Dashboard Overview</h1>
+          </div>
+          <p className="text-slate-400 text-[11px] mt-1">
+            Monitoring data stream pipeline ETL Bordero, validasi IPR, dan status konsolidasi database PostgreSQL.
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 px-3 py-2 rounded-2xl">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-[11px] font-bold text-slate-700">LIVE SYNC</span>
+          </div>
         </div>
       </div>
 
-      {/* SUMMARY CARDS (CLEAN & RINGKAS) */}
+      {/* 2. HERO STATS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider block">Total Batch</span>
-            <h2 className="text-xl font-bold text-slate-800 mt-0.5">128 File</h2>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Total Batch ETL</span>
+            <span className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+              <FileSpreadsheet className="w-4 h-4" />
+            </span>
           </div>
-          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-            <FileSpreadsheet className="w-4 h-4" />
+          <div>
+            <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">128</div>
+            <p className="text-slate-400 text-[10px] mt-0.5">Berkas XLSX & CSV terproses</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider block">Total TSI / Plafon</span>
-            <h2 className="text-xl font-bold text-slate-800 mt-0.5">Rp 4.2 T</h2>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Total TSI / Plafon</span>
+            <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+              <ShieldCheck className="w-4 h-4" />
+            </span>
           </div>
-          <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-            <ShieldCheck className="w-4 h-4" />
+          <div>
+            <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">Rp 4.2 T</div>
+            <p className="text-emerald-600 font-semibold text-[10px] mt-0.5 flex items-center gap-0.5">
+              <TrendingUp className="w-3 h-3" /> Akumulasi portofolio aktif
+            </p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider block">Unbound Treaty</span>
-            <h2 className="text-xl font-bold text-amber-600 mt-0.5">157 Baris</h2>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Unbound Treaty</span>
+            <span className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+              <AlertTriangle className="w-4 h-4" />
+            </span>
           </div>
-          <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-            <AlertTriangle className="w-4 h-4" />
+          <div>
+            <div className="text-2xl font-black text-amber-600 font-mono tracking-tight">157</div>
+            <p className="text-slate-400 text-[10px] mt-0.5">Perlu konfirmasi limit IPR</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-slate-400 font-medium text-[10px] uppercase tracking-wider block">Active Cedants</span>
-            <h2 className="text-xl font-bold text-slate-800 mt-0.5">16 Perusahaan</h2>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Active Cedants</span>
+            <span className="p-2 bg-purple-50 text-purple-600 rounded-xl border border-purple-100">
+              <Building2 className="w-4 h-4" />
+            </span>
           </div>
-          <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
-            <Building2 className="w-4 h-4" />
+          <div>
+            <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">5 Cedants</div>
+            <p className="text-slate-400 text-[10px] mt-0.5">Askrida, Tripakarta, Jamkrida, dll</p>
           </div>
         </div>
 
       </div>
 
-      {/* MAIN CONTENT: GRAFIK BALOK KE ATAS & ACTIVITY LOG */}
+      {/* 3. MAIN ANALYTICS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         
-        {/* GRAFIK BALOK KE ATAS (VERTICAL BAR CHART) (8 COLS) */}
-        <div className="lg:col-span-8 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        {/* CHART CONTAINER (8 COLS) */}
+        <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
-              <h3 className="font-bold text-slate-800 text-xs">Volume Data Baris per Class of Business (COB)</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Murni Lini Bisnis Asuransi (Tanpa Kategori Klaim)</p>
+              <h3 className="font-bold text-slate-900 text-sm">Distribusi Volume Data per COB</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Perbandingan rasio transaksi valid vs unbound per Class of Business</p>
             </div>
-            <div className="flex items-center gap-3 text-[10px] font-semibold">
-              <span className="flex items-center gap-1.5 text-slate-600">
-                <span className="w-2.5 h-2.5 rounded-xs bg-blue-600" /> Bound (Valid)
+            <div className="flex items-center gap-4 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200/70 text-[10px] font-bold">
+              <span className="flex items-center gap-1.5 text-slate-700">
+                <span className="w-2.5 h-2.5 rounded-md bg-blue-600" /> Bound ({totalBound.toLocaleString()})
               </span>
-              <span className="flex items-center gap-1.5 text-slate-600">
-                <span className="w-2.5 h-2.5 rounded-xs bg-amber-500" /> Unbound
+              <span className="flex items-center gap-1.5 text-slate-700">
+                <span className="w-2.5 h-2.5 rounded-md bg-amber-500" /> Unbound ({totalUnbound.toLocaleString()})
               </span>
             </div>
           </div>
 
-          {/* AREA GRAFIK BALOK VERTIKAL */}
-          <div className="pt-4 pb-2 px-2">
-            <div className="h-52 flex items-end justify-between gap-3 sm:gap-6 border-b border-slate-200/80 pb-1">
+          {/* VERTICAL BAR CHART AREA */}
+          <div className="pt-6 pb-2">
+            <div className="h-60 flex items-end justify-between gap-4 sm:gap-8 border-b border-slate-100 pb-2">
               {COB_DATA.map((item, idx) => {
                 const boundHeight = (item.bound / maxVal) * 100;
                 const unboundHeight = (item.unbound / maxVal) * 100;
@@ -123,27 +169,34 @@ export default function Dashboard() {
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
                     
-                    {/* Tooltip Hover Sederhana */}
-                    <div className="opacity-0 group-hover:opacity-100 absolute -top-10 bg-slate-800 text-white text-[9.5px] py-1 px-2 rounded-md shadow-md transition-opacity pointer-events-none whitespace-nowrap z-10">
-                      Bound: {item.bound} | Unbound: {item.unbound}
+                    {/* Tooltip Card */}
+                    <div className="opacity-0 group-hover:opacity-100 absolute -top-12 bg-slate-900 text-white text-[10px] font-mono py-1.5 px-2.5 rounded-xl shadow-xl transition-all duration-150 pointer-events-none whitespace-nowrap z-20 flex items-center gap-2">
+                      <span className="text-blue-400 font-bold">{item.code}:</span>
+                      <span>Bound {item.bound}</span>
+                      <span className="text-slate-500">/</span>
+                      <span className="text-amber-400">Unb {item.unbound}</span>
                     </div>
 
-                    {/* Pasangan Balok Vertikal */}
-                    <div className="flex items-end justify-center gap-1.5 w-full h-full">
-                      {/* Balok Bound */}
-                      <div 
-                        style={{ height: `${boundHeight}%` }}
-                        className="w-full max-w-[24px] bg-blue-600 rounded-t-md transition-all duration-300 hover:bg-blue-700"
-                      />
-                      {/* Balok Unbound */}
-                      <div 
-                        style={{ height: `${Math.max(unboundHeight, 3)}%` }}
-                        className="w-full max-w-[24px] bg-amber-500 rounded-t-md transition-all duration-300 hover:bg-amber-600"
-                      />
+                    {/* Bar Columns Container with Track Background */}
+                    <div className="flex items-end justify-center gap-2 w-full h-full bg-slate-50/80 rounded-2xl p-1 border border-slate-100">
+                      {/* Bound Bar */}
+                      <div className="w-full max-w-[20px] h-full flex items-end">
+                        <div 
+                          style={{ height: `${boundHeight}%` }}
+                          className="w-full bg-blue-600 rounded-xl transition-all duration-300 group-hover:bg-blue-700 shadow-2xs"
+                        />
+                      </div>
+                      {/* Unbound Bar */}
+                      <div className="w-full max-w-[20px] h-full flex items-end">
+                        <div 
+                          style={{ height: `${Math.max(unboundHeight, 4)}%` }}
+                          className="w-full bg-amber-500 rounded-xl transition-all duration-300 group-hover:bg-amber-600 shadow-2xs"
+                        />
+                      </div>
                     </div>
 
-                    {/* Label COB di Bawah */}
-                    <span className="text-[10px] font-semibold text-slate-600 mt-2 text-center truncate w-full">
+                    {/* Label COB */}
+                    <span className="text-[10px] font-bold text-slate-700 mt-2.5 text-center truncate w-full">
                       {item.name}
                     </span>
                   </div>
@@ -151,34 +204,62 @@ export default function Dashboard() {
               })}
             </div>
           </div>
+
+          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+            <span>Menampilkan 5 Class of Business aktif</span>
+            <span className="font-mono text-slate-500">Kapasitas Maksimal Skala: {maxVal.toLocaleString()} Baris</span>
+          </div>
         </div>
 
-        {/* AKTIVITAS TERAKHIR (4 COLS) */}
-        <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3 flex flex-col justify-between">
+        {/* RECENT ACTIVITY TIMELINE (4 COLS) */}
+        <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-4">
           <div>
-            <h3 className="font-bold text-slate-800 text-xs border-b border-slate-100 pb-3 mb-3">Aktivitas Terakhir</h3>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="font-bold text-slate-900 text-sm">Aktivitas Pipeline</h3>
+              <span className="font-mono text-[10px] bg-slate-100 px-2 py-0.5 rounded-lg font-bold text-slate-500">
+                Log ETL
+              </span>
+            </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {RECENT_ACTIVITIES.map((act, i) => (
-                <div key={i} className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/50 flex items-center justify-between gap-2">
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="font-semibold text-slate-800 text-xs truncate">{act.title}</p>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                      <span className="font-mono font-bold text-blue-600">{act.cedant}</span>
-                      <span>•</span>
-                      <span className="flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{act.time}</span>
-                    </div>
+                <div 
+                  key={i} 
+                  className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/40 hover:bg-slate-50 hover:border-slate-200 transition-all flex flex-col gap-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-bold text-slate-800 text-xs truncate leading-snug">{act.title}</p>
+                    <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase shrink-0 ${
+                      act.status === 'valid'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {act.status}
+                    </span>
                   </div>
 
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
-                    act.status === 'valid'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}>
-                    {act.status === 'valid' ? 'Valid' : 'Warning'}
-                  </span>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                    <span className="font-bold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.2 rounded-md">
+                      {act.cedant}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span>{act.records}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-0.5 text-slate-500">
+                        <Clock className="w-2.5 h-2.5" />
+                        {act.time}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+              <span>Buka Semua Riwayat ETL</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
             </div>
           </div>
         </div>

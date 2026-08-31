@@ -40,6 +40,16 @@ export default function FormKredit() {
       label: "Bordero Klaim Kredit (Askrida)",
       type: "KLAIM",
     },
+    {
+      id: "premi_jakrejabar_credit",
+      label: "Bordero Premi Kredit (Jakre Jabar)",
+      type: "PREMIUM",
+    },
+    {
+      id: "claim_jakrejabar_credit",
+      label: "Bordero Premi Kredit (Jakre Jabar)",
+      type: "CLAIM",
+    },
   ];
 
   const [selectedTable, setSelectedTable] = useState(
