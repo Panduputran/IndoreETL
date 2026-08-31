@@ -15,12 +15,10 @@ import {
   Check,
   DatabaseZap,
   FolderOpen,
+  Calendar,
 } from "lucide-react";
 
 export default function FormKredit() {
-  // Daftar Tabel COB Kredit Terdaftar di Database
-  // src/features/tables/FormKredit.jsx
-
   const creditTables = [
     {
       id: "claim_jamkridajabar_credit",
@@ -31,16 +29,6 @@ export default function FormKredit() {
       id: "premi_jamkridajabar_credit",
       label: "Bordero Premi Kredit (Jamkrida Jabar)",
       type: "PREMIUM",
-    },
-    {
-      id: "claim_jakrejabar_credit",
-      label: "Bordero Klaim Kredit (Jakre Jabar)",
-      type: "KLAIM",
-    },
-    {
-      id: "claim_jakrejabar_kredit",
-      label: "Bordero Klaim Kredit (Jakre Jabar - ID)",
-      type: "KLAIM",
     },
     {
       id: "premi_credit_askrida",
@@ -54,27 +42,30 @@ export default function FormKredit() {
     },
   ];
 
-  // Set default tabel aktif ke claim_jamkridajabar_credit
   const [selectedTable, setSelectedTable] = useState(
     "claim_jamkridajabar_credit",
   );
   const [openTableDropdown, setOpenTableDropdown] = useState(false);
   const tableDropdownRef = useRef(null);
 
-  // State Filter Status (Query ke Database)
-  const [filterStatus, setFilterStatus] = useState("ALL"); // 'ALL' | 'VALID' | 'WARNING'
+  // State Filter Status
+  const [filterStatus, setFilterStatus] = useState("ALL");
   const [openStatusDropdown, setOpenStatusDropdown] = useState(false);
   const statusDropdownRef = useRef(null);
+
+  // State Filter Periode Dinamis
+  const [periodList, setPeriodList] = useState([]);
+  const [filterPeriod, setFilterPeriod] = useState("ALL");
+  const [openPeriodDropdown, setOpenPeriodDropdown] = useState(false);
+  const periodDropdownRef = useRef(null);
 
   const [columns, setColumns] = useState([]);
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Status Keberadaan Tabel
   const [isTableExists, setIsTableExists] = useState(true);
 
-  // Pagination & Counts dari Database
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
@@ -103,11 +94,28 @@ export default function FormKredit() {
     "no_sertifikat_peserta_debitur",
   ];
 
+  // 1. Ambil daftar periode unik saat tabel berganti
+  const fetchPeriodList = async (tableName) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:8000/api/v1/tables/${tableName}/periods`,
+      );
+      if (response.data.status === "success") {
+        setPeriodList(response.data.periods || []);
+      }
+    } catch (err) {
+      console.error("Gagal mengambil daftar periode:", err);
+      setPeriodList([]);
+    }
+  };
+
+  // 2. Fetch data tabel dengan filter status & periode
   const fetchCreditData = async (
     tableName,
     targetPage = 1,
     currentLimit = limit,
     currentStatus = filterStatus,
+    currentPeriod = filterPeriod,
   ) => {
     setLoading(true);
     try {
@@ -118,6 +126,7 @@ export default function FormKredit() {
             page: targetPage,
             limit: currentLimit,
             status: currentStatus,
+            period: currentPeriod,
           },
         },
       );
@@ -159,8 +168,13 @@ export default function FormKredit() {
   };
 
   useEffect(() => {
-    fetchCreditData(selectedTable, page, limit, filterStatus);
-  }, [selectedTable, limit, filterStatus]);
+    fetchPeriodList(selectedTable);
+    setFilterPeriod("ALL");
+  }, [selectedTable]);
+
+  useEffect(() => {
+    fetchCreditData(selectedTable, page, limit, filterStatus, filterPeriod);
+  }, [selectedTable, limit, filterStatus, filterPeriod]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -176,6 +190,12 @@ export default function FormKredit() {
       ) {
         setOpenStatusDropdown(false);
       }
+      if (
+        periodDropdownRef.current &&
+        !periodDropdownRef.current.contains(event.target)
+      ) {
+        setOpenPeriodDropdown(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -190,6 +210,12 @@ export default function FormKredit() {
   const handleStatusChange = (newStatus) => {
     setFilterStatus(newStatus);
     setOpenStatusDropdown(false);
+    setPage(1);
+  };
+
+  const handlePeriodChange = (newPeriod) => {
+    setFilterPeriod(newPeriod);
+    setOpenPeriodDropdown(false);
     setPage(1);
   };
 
@@ -210,6 +236,7 @@ export default function FormKredit() {
             "notes",
             "trx",
             "period",
+            "cob",
           ].includes(colLower);
         const val = row[col];
 
@@ -243,7 +270,7 @@ export default function FormKredit() {
 
   return (
     <div className="p-6 space-y-5 text-xs bg-slate-50 min-h-screen relative font-sans">
-      {/* Header Halaman */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2 mt-0.5">
@@ -256,12 +283,17 @@ export default function FormKredit() {
           </p>
         </div>
 
-        {/* Action Header Buttons */}
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() =>
-              fetchCreditData(selectedTable, page, limit, filterStatus)
+              fetchCreditData(
+                selectedTable,
+                page,
+                limit,
+                filterStatus,
+                filterPeriod,
+              )
             }
             className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
           >
@@ -282,12 +314,11 @@ export default function FormKredit() {
         </div>
       </div>
 
-      {/* Main Table Card */}
+      {/* Main Card */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
           {/* Search Box */}
-          <div className="relative w-full sm:w-80 shrink-0">
+          <div className="relative w-full xl:w-72 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
@@ -299,8 +330,80 @@ export default function FormKredit() {
             />
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Dropdown Filter Status */}
+          {/* Filter Bar (Periode, Status, Tabel, Limit) */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {/* 1. DROPDOWN FILTER BY PERIODE (Dinamis dari Kolom Periode di DB) */}
+            <div className="relative" ref={periodDropdownRef}>
+              <button
+                type="button"
+                disabled={!isTableExists || periodList.length === 0}
+                onClick={() => setOpenPeriodDropdown(!openPeriodDropdown)}
+                className={`flex items-center gap-2 border px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                  filterPeriod !== "ALL"
+                    ? "bg-blue-50 text-blue-700 border-blue-300 ring-2 ring-blue-500/10"
+                    : "bg-slate-50 hover:bg-white text-slate-700 border-slate-200"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>
+                  {filterPeriod === "ALL"
+                    ? `Semua Periode (${totalRows.toLocaleString()})`
+                    : `${filterPeriod} (${(periodList.find((p) => p.period === filterPeriod)?.count || 0).toLocaleString()})`}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openPeriodDropdown ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {openPeriodDropdown && (
+                <div className="absolute left-0 mt-1.5 w-64 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-100">
+                  {/* Opsi Semua Periode */}
+                  <button
+                    type="button"
+                    onClick={() => handlePeriodChange("ALL")}
+                    className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
+                      filterPeriod === "ALL"
+                        ? "bg-blue-50 text-blue-700 font-bold"
+                        : "hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <span>Semua Periode</span>
+                    <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 font-bold">
+                      {totalRows.toLocaleString()}
+                    </span>
+                  </button>
+
+                  {/* Daftar Item Periode Dinamis + Count */}
+                  {periodList.map((item) => (
+                    <button
+                      key={item.period}
+                      type="button"
+                      onClick={() => handlePeriodChange(item.period)}
+                      className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
+                        filterPeriod === item.period
+                          ? "bg-blue-50 text-blue-700 font-bold"
+                          : "hover:bg-slate-50 text-slate-700"
+                      }`}
+                    >
+                      <span className="font-mono truncate pr-2">
+                        {item.period}
+                      </span>
+                      <span
+                        className={`font-mono text-[10px] px-1.5 py-0.5 rounded border font-bold ${
+                          filterPeriod === item.period
+                            ? "bg-blue-100 text-blue-800 border-blue-200"
+                            : "bg-slate-100 text-slate-600 border-slate-200"
+                        }`}
+                      >
+                        {item.count.toLocaleString()}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Dropdown Filter Status Validasi */}
             <div className="relative" ref={statusDropdownRef}>
               <button
                 type="button"
@@ -380,7 +483,7 @@ export default function FormKredit() {
               )}
             </div>
 
-            {/* Dropdown Pilihan Tabel Kredit (Termasuk Jamkrida Jabar) */}
+            {/* 3. Dropdown Pilihan Tabel */}
             <div className="relative" ref={tableDropdownRef}>
               <button
                 type="button"
@@ -426,7 +529,7 @@ export default function FormKredit() {
               )}
             </div>
 
-            {/* Selector Limit Baris */}
+            {/* 4. Selector Limit */}
             <select
               value={limit}
               disabled={!isTableExists}
@@ -440,7 +543,7 @@ export default function FormKredit() {
           </div>
         </div>
 
-        {/* Tampilan Empty State atau Tabel */}
+        {/* Tabel Data / Empty State */}
         {!isTableExists ? (
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 py-16 px-4 text-center">
             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-blue-100">
@@ -460,7 +563,6 @@ export default function FormKredit() {
           </div>
         ) : (
           <>
-            {/* Tabel Live PostgreSQL */}
             <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs pb-1 relative min-h-[350px]">
               {loading && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-20">
@@ -600,6 +702,7 @@ export default function FormKredit() {
                         page - 1,
                         limit,
                         filterStatus,
+                        filterPeriod,
                       )
                     }
                     disabled={page <= 1 || loading}
@@ -615,6 +718,7 @@ export default function FormKredit() {
                         page + 1,
                         limit,
                         filterStatus,
+                        filterPeriod,
                       )
                     }
                     disabled={page >= totalPages || loading}
