@@ -2,11 +2,11 @@ import re
 import numpy as np
 import pandas as pd
 from app.core.config import MASTER_COLUMNS_PREMI, MASTER_COLUMNS_CLAIM
-from app.utils.helpers import read_excel_dynamic_header, to_snake_case, validate_dates
+from app.utils.helpers import to_snake_case
 
 
 def format_id_column(val):
-    """Sanitasi string ID agar tidak berubah menjadi float ilmiah (e+16) atau berakhiran .0"""
+    """Membersihkan ID/Nomor agar tidak berubah format float/eksponen"""
     if pd.isna(val):
         return np.nan
     if isinstance(val, (float, np.floating)):
@@ -21,14 +21,35 @@ def format_id_column(val):
     return val_str.replace(".0", "") if val_str.endswith(".0") else val_str
 
 
+def read_excel_smart(file_path: str, target_sheet: str) -> pd.DataFrame:
+    """Membaca sheet excel dan mencari baris header yang paling sesuai secara otomatis"""
+    # Baca raw terlebih dahulu tanpa asumsi header
+    raw_df = pd.read_excel(file_path, sheet_name=target_sheet, header=None)
+    if raw_df.empty:
+        return pd.DataFrame()
+
+    # Cari baris yang mengandung kata kunci header kolom
+    keywords = ["polis", "policy", "terjamin", "bank", "peserta", "klaim", "claim", "nomor", "sp", "skim"]
+    header_idx = 0
+    for idx, row in raw_df.head(25).iterrows():
+        row_str = " ".join(row.dropna().astype(str).str.lower())
+        if sum(1 for kw in keywords if kw in row_str) >= 2:
+            header_idx = idx
+            break
+
+    # Muat ulang dataframe dengan baris header yang ditemukan
+    df = pd.read_excel(file_path, sheet_name=target_sheet, skiprows=header_idx)
+    return df
+
+
 class JakreJabarETL:
-    """Modul khusus pemrosesan data PT Jaminan Kredit Daerah Jawa Barat (Premi & Klaim)"""
+    """ETL Jakre Jabar untuk Premi dan Klaim"""
 
     @staticmethod
     def process_premi(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_PREMI.get("jakrejabar", [])
-        df = read_excel_dynamic_header(file_path, target_sheet)
-        if df is None or df.empty:
+        df = read_excel_smart(file_path, target_sheet)
+        if df.empty:
             return pd.DataFrame(columns=master_cols)
 
         df.columns = [to_snake_case(str(col)) for col in df.columns]
@@ -49,11 +70,15 @@ class JakreJabarETL:
         df.rename(columns=rename_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # Filter baris valid
-        if 'nomor_sp' in df.columns:
-            df = df.dropna(subset=['nomor_sp'])
-            trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
-            df = df[~df['nomor_sp'].astype(str).str.upper().str.strip().str.match(trash_regex, na=False)]
+        # Hapus baris summary/total
+        trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
+        for col_check in ['nomor_sp', 'nama', 'nomor_pengajuan']:
+            if col_check in df.columns:
+                df = df[~df[col_check].astype(str).str.upper().str.strip().str.match(trash_regex, na=False)]
+                break
+
+        # Buang baris yang benar-benar kosong di semua kolom penting
+        df = df.dropna(how='all')
 
         df['period'] = periode_lengkap
         if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
@@ -78,28 +103,18 @@ class JakreJabarETL:
         ]
         for mcol in money_cols:
             if mcol in df.columns:
-                cleaned_val = (
-                    df[mcol]
-                    .astype(str)
-                    .str.replace('%', '', regex=False)
-                    .str.replace(',', '', regex=False)
-                    .str.replace(' ', '', regex=False)
-                    .str.strip()
-                )
-                df[mcol] = pd.to_numeric(cleaned_val, errors='coerce').fillna(0.0).round(2)
+                cleaned = df[mcol].astype(str).str.replace(r'[%, ]', '', regex=True).str.strip()
+                df[mcol] = pd.to_numeric(cleaned, errors='coerce').fillna(0.0).round(2)
 
         percent_cols = ['persentase_premi_disesikan_qs', 'persentase_premi_riureins', 'persentase_premi_riuall']
         for pcol in percent_cols:
             if pcol in df.columns:
-                cleaned_pct = df[pcol].astype(str).str.replace('%', '', regex=False).str.replace(',', '', regex=False).str.strip()
-                num_val = pd.to_numeric(cleaned_pct, errors='coerce').fillna(0.0)
+                cleaned = df[pcol].astype(str).str.replace(r'[%, ]', '', regex=True).str.strip()
+                num_val = pd.to_numeric(cleaned, errors='coerce').fillna(0.0)
                 num_val = np.where(num_val > 1.0, num_val / 100.0, num_val)
                 df[pcol] = pd.Series(num_val, index=df.index).round(6)
 
-        # Cast no secara aman (jika NaN diisi urutan index + 1)
-        if 'no' in df.columns:
-            clean_no = df['no'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df['no'] = pd.to_numeric(clean_no, errors='coerce').fillna(pd.Series(range(1, len(df) + 1), index=df.index)).astype('int64')
+        df['no'] = range(1, len(df) + 1)
 
         if 'jangka_waktu' in df.columns:
             df['jangka_waktu'] = pd.to_numeric(df['jangka_waktu'], errors='coerce').fillna(0).astype('int32')
@@ -117,8 +132,8 @@ class JakreJabarETL:
     @staticmethod
     def process_claim(file_path: str, target_sheet: str, periode_lengkap: str, override_cob: str = None) -> pd.DataFrame:
         master_cols = MASTER_COLUMNS_CLAIM.get("jakrejabar", [])
-        df = read_excel_dynamic_header(file_path, target_sheet)
-        if df is None or df.empty:
+        df = read_excel_smart(file_path, target_sheet)
+        if df.empty:
             return pd.DataFrame(columns=master_cols)
 
         df.columns = [to_snake_case(str(col)) for col in df.columns]
@@ -126,20 +141,27 @@ class JakreJabarETL:
         alias_mapping = {
             'no_polis_no_sp': 'policy_number',
             'no_polis': 'policy_number',
+            'nomor_sp': 'policy_number',
+            'nomor_polis': 'policy_number',
             'id_terjamin': 'id_terjamin',
             'nama_produk': 'cob_type_of_cover',
             'nama_bank': 'bank_name',
+            'bank': 'bank_name',
             'insured_name_terjamin': 'insured_name',
             'nama_peserta': 'insured_name',
+            'nama': 'insured_name',
+            'nama_terjamin': 'insured_name',
             'periode_mulai_kredit': 'period_of_insurance_start',
             'periode_berkahirnya_kredit': 'period_of_insurance_end',
+            'tgl_mulai': 'period_of_insurance_start',
+            'tgl_akhir': 'period_of_insurance_end',
             'underwriting_year': 'uw_year',
             'tahun_uw': 'uw_year',
             'nilai_kredit_penjaminan_sum_insured': 'sum_insured',
             'nilai_kreditpenjaminan_sum_insured': 'sum_insured',
+            'sum_insured': 'sum_insured',
             'nilai_klaim_100': 'claim_amount_100',
             'nilai_klaim_100percent': 'claim_amount_100',
-            'nilai_klaim_percent_100': 'claim_amount_100',
             'klaim_100': 'claim_amount_100',
             'klaim_100percent': 'claim_amount_100',
             'retensi_sendiri_asuransi_xxx': 'our_share_percent',
@@ -152,12 +174,13 @@ class JakreJabarETL:
         df.rename(columns=alias_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # Filter baris yang valid: policy_number atau insured_name tidak boleh null/rekap
-        check_col = 'policy_number' if 'policy_number' in df.columns else ('insured_name' if 'insured_name' in df.columns else None)
-        if check_col:
-            df = df.dropna(subset=[check_col])
-            trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
-            df = df[~df[check_col].astype(str).str.upper().str.strip().str.match(trash_regex, na=False)]
+        # Buang baris header duplikat / summary
+        trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
+        for col_id in ['policy_number', 'insured_name', 'id_terjamin']:
+            if col_id in df.columns:
+                df = df[~df[col_id].astype(str).str.upper().str.strip().str.match(trash_regex, na=False)]
+                df = df[df[col_id].notna() & (df[col_id].astype(str).str.strip() != "")]
+                break
 
         df['period'] = periode_lengkap
         if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
@@ -181,22 +204,11 @@ class JakreJabarETL:
         ]
         for ncol in num_cols:
             if ncol in df.columns:
-                cleaned_val = (
-                    df[ncol]
-                    .astype(str)
-                    .str.replace('%', '', regex=False)
-                    .str.replace(',', '', regex=False)
-                    .str.replace(' ', '', regex=False)
-                    .str.strip()
-                )
-                df[ncol] = pd.to_numeric(cleaned_val, errors='coerce').fillna(0.0).round(2)
+                cleaned = df[ncol].astype(str).str.replace(r'[%, ]', '', regex=True).str.strip()
+                df[ncol] = pd.to_numeric(cleaned, errors='coerce').fillna(0.0).round(2)
 
-        # Generate no urut jika kosong / error parsing
-        if 'no' in df.columns:
-            clean_no = df['no'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            df['no'] = pd.to_numeric(clean_no, errors='coerce').fillna(pd.Series(range(1, len(df) + 1), index=df.index)).astype('int64')
-        else:
-            df['no'] = range(1, len(df) + 1)
+        # Generate urutan nomor baris pasti
+        df['no'] = range(1, len(df) + 1)
 
         if master_cols:
             for col in master_cols:
