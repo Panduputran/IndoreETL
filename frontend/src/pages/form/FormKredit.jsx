@@ -47,7 +47,7 @@ export default function FormKredit() {
     },
     {
       id: "claim_jakrejabar_credit",
-      label: "Bordero Premi Kredit (Jakre Jabar)",
+      label: "Bordero Claim Kredit (Jakre Jabar)",
       type: "CLAIM",
     },
   ];
