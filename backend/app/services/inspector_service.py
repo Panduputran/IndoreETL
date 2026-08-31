@@ -64,12 +64,13 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
     return "TEXT"
 
 
+# backend/app/services/inspector_service.py
+
 def inspect_and_save_file(
     file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
 ) -> dict:
     file_id = f"file_{uuid.uuid4().hex}"
     saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
-
     with open(saved_path, "wb") as f:
         f.write(file_bytes)
 
@@ -78,6 +79,7 @@ def inspect_and_save_file(
 
     if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
         try:
+            # 1. Ekstraksi XML dan baca status state tiap sheet
             with zipfile.ZipFile(saved_path, "r") as z:
                 with z.open("xl/workbook.xml") as f_xml:
                     tree = ET.parse(f_xml)
@@ -85,21 +87,37 @@ def inspect_and_save_file(
                     for elem in root.iter():
                         if elem.tag.endswith("sheet"):
                             sheet_name = elem.attrib.get("name")
+                            sheet_state = elem.attrib.get("state", "visible").lower()
                             if sheet_name:
-                                available_sheets.append(sheet_name)
+                                available_sheets.append({
+                                    "name": sheet_name,
+                                    "is_hidden": sheet_state in ["hidden", "veryhidden"]
+                                })
         except Exception:
-            wb = openpyxl.load_workbook(saved_path, read_only=True, keep_links=False)
-            available_sheets = wb.sheetnames
+            wb = openpyxl.load_workbook(saved_path, read_only=False, keep_links=False)
+            available_sheets = [
+                {
+                    "name": ws.title,
+                    "is_hidden": ws.sheet_state in ["hidden", "veryHidden"]
+                }
+                for ws in wb.worksheets
+            ]
             wb.close()
+            
     elif lower_name.endswith(".xls"):
         excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
-        available_sheets = excel_obj.sheet_names
+        available_sheets = [{"name": s, "is_hidden": False} for s in excel_file.sheet_names]
     elif lower_name.endswith(".csv"):
-        available_sheets = ["CSV_DATA"]
+        available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
+
+    # Ambil default sheet pertama yang berstatus visible (tidak hidden)
+    visible_first = next((s["name"] for s in available_sheets if not s["is_hidden"]), available_sheets[0]["name"] if available_sheets else "")
 
     return {
         "file_id": file_id,
-        "available_sheets": available_sheets,
+        "available_sheets": [s["name"] for s in available_sheets],
+        "sheet_details": available_sheets,
+        "default_sheet": visible_first,
         "saved_path": saved_path,
     }
 
