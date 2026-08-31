@@ -4,6 +4,7 @@ from sqlalchemy import text
 from app.database.connection import engine
 import re
 
+
 router = APIRouter()
 
 MANDATORY_KEYWORDS = [
@@ -28,8 +29,55 @@ MANDATORY_KEYWORDS = [
 ]
 
 # Endpoint baru: Ambil daftar periode unik yang ada di tabel
-# app/api/v1/endpoints/tables.py
+@router.get("/dashboard/summary")
+def get_dashboard_summary():
+    try:
+        with engine.connect() as conn:
+            # 1. Ambil semua tabel premi & klaim yang ada
+            tables_query = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                  AND (table_name LIKE 'premi_%' OR table_name LIKE 'claim_%');
+            """)
+            tables = [r[0] for r in conn.execute(tables_query).fetchall()]
 
+            cob_counts = {
+                'FIRE': {'bound': 0, 'unbound': 0},
+                'CARGO': {'bound': 0, 'unbound': 0},
+                'PROP': {'bound': 0, 'unbound': 0},
+                'CREDIT': {'bound': 0, 'unbound': 0},
+                'ENG': {'bound': 0, 'unbound': 0},
+            }
+            
+            total_rows_all = 0
+
+            # 2. Agregasi data dari tiap tabel fisik
+            for t in tables:
+                t_clean = re.sub(r'[^a-zA-Z0-9_]', '', t)
+                total = conn.execute(text(f'SELECT COUNT(*) FROM "{t_clean}"')).scalar() or 0
+                total_rows_all += total
+
+                # Klasifikasi ke COB
+                cob_key = 'CREDIT' if ('credit' in t or 'kredit' in t) else ('FIRE' if 'fire' in t else 'PROP')
+                cob_counts[cob_key]['bound'] += total
+
+            cob_data_formatted = [
+                {'name': 'Fire / Harta', 'code': 'FIRE', 'bound': cob_counts['FIRE']['bound'], 'unbound': cob_counts['FIRE']['unbound']},
+                {'name': 'Marine Cargo', 'code': 'CARGO', 'bound': cob_counts['CARGO']['bound'], 'unbound': cob_counts['CARGO']['unbound']},
+                {'name': 'Property', 'code': 'PROP', 'bound': cob_counts['PROP']['bound'], 'unbound': cob_counts['PROP']['unbound']},
+                {'name': 'Kredit', 'code': 'CREDIT', 'bound': cob_counts['CREDIT']['bound'], 'unbound': cob_counts['CREDIT']['unbound']},
+                {'name': 'Engineering', 'code': 'ENG', 'bound': cob_counts['ENG']['bound'], 'unbound': cob_counts['ENG']['unbound']},
+            ]
+
+            return {
+                "status": "success",
+                "total_batches": len(tables),
+                "total_rows": total_rows_all,
+                "cob_data": cob_data_formatted
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{table_name}/periods")
 def get_table_periods(table_name: str):

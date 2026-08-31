@@ -20,11 +20,7 @@ import {
 
 export default function FormKredit() {
   const creditTables = [
-    {
-      id: "claim_jamkridajabar_credit",
-      label: "Bordero Klaim Kredit (Jamkrida Jabar)",
-      type: "KLAIM",
-    },
+    
     {
       id: "premi_jamkridajabar_credit",
       label: "Bordero Premi Kredit (Jamkrida Jabar)",
@@ -36,14 +32,19 @@ export default function FormKredit() {
       type: "PREMIUM",
     },
     {
-      id: "claim_kredit_askrida",
-      label: "Bordero Klaim Kredit (Askrida)",
-      type: "KLAIM",
-    },
-    {
       id: "premi_jakrejabar_credit",
       label: "Bordero Premi Kredit (Jakre Jabar)",
       type: "PREMIUM",
+    },
+    {
+      id: "claim_jamkridajabar_credit",
+      label: "Bordero Klaim Kredit (Jamkrida Jabar)",
+      type: "KLAIM",
+    },
+    {
+      id: "claim_kredit_askrida",
+      label: "Bordero Klaim Kredit (Askrida)",
+      type: "KLAIM",
     },
     {
       id: "claim_jakrejabar_credit",
