@@ -6,9 +6,8 @@ export const CEDANTS = [
   { code: 'tripakarta', name: 'PT Asuransi Tripakarta', alias: 'CED-TRIPAKARTA', defaultCob: 'FIRE' },
   { code: 'aca', name: 'PT Asuransi Central Asia (ACA)', alias: 'CED-ACA', defaultCob: 'FIRE' },
   { code: 'buanaindependent', name: 'PT Asuransi Buana Independent', alias: 'CED-BUANA', defaultCob: 'FIRE' },
-
-  // Cedant Baru (COB KREDIT & Bulanan)
-  { code: 'jamkridajabar', name: 'PT Jamkrida Jabar (Igna Asia)', alias: 'CED-JAMKRIDA-JABAR', defaultCob: 'CREDIT' }
+  { code: 'jamkridajabar', name: 'PT Jamkrida Jabar (Igna Asia)', alias: 'CED-JAMKRIDA-JABAR', defaultCob: 'CREDIT' },
+  { code: 'jakrejabar', name: 'PT Jakre Jabar', alias: 'CED-JAKRE-JABAR', defaultCob: 'CREDIT' }
 ];
 
 export const QUARTER_OPTIONS = [
