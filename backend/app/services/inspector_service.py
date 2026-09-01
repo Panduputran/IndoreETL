@@ -7,6 +7,7 @@ import zipfile
 import openpyxl
 import pandas as pd
 from sqlalchemy import inspect, text
+
 from app.core.config import (
     MASTER_COLUMNS_CLAIM,
     MASTER_COLUMNS_PREMI,
@@ -25,11 +26,15 @@ TEMP_UPLOAD_DIR = "temp_uploads"
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
 
+# ==========================================
+# SANITIZATION & SCHEMA HELPERS
+# ==========================================
+
+
 def sanitize_column_name(col_name: str) -> str:
-    """Sanitasi nama kolom SQL: snake_case, huruf kecil, dan angka di awal dipindah ke belakang."""
     col_name = str(col_name or "").strip().lower()
     col_name = to_snake_case(col_name)
-    col_name = re.sub(r'[^a-z0-9_]', '', col_name)
+    col_name = re.sub(r"[^a-z0-9_]", "", col_name)
     match = re.match(r"^(\d+)_(.+)$", col_name)
     if match:
         number_part, text_part = match.groups()
@@ -38,107 +43,72 @@ def sanitize_column_name(col_name: str) -> str:
 
 
 def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -> str:
-    """
-    Pemetaan tipe data universal yang selaras dengan loader.py:
-    - Kolom Angka / Uang / Share -> NUMERIC(20, 2)
-    - Kolom No / ID / Tenor -> BIGINT
-    - SEMUA Tanggal & Teks Bebas -> TEXT (Anti Error Limit & Out of Range)
-    """
     col_clean = sanitize_column_name(col_name)
 
-    # 1. Kolom Bilangan Bulat Urut -> BIGINT
-    int_cols = {'no', 'id', 'uw_year', 'tahun', 'waktu_pertanggungan_bulan', 'tenor', 'usia_saat_akad_tahun', 'seq'}
+    int_cols = {
+        "no",
+        "id",
+        "uw_year",
+        "tahun",
+        "waktu_pertanggungan_bulan",
+        "tenor",
+        "usia_saat_akad_tahun",
+        "seq",
+    }
     if col_clean in int_cols:
         return "BIGINT"
 
-    # 2. Kolom Angka Keuangan / Uang / Share -> NUMERIC(20, 2)
     money_keywords = [
-        'amount', 'claim', 'premi', 'premium', 'tsi', 'sum_insured',
-        'share_percent', 'our_share', 'reinsurer_share', 'comm', 'netto',
-        'incurred', 'loss_scaled', 'paid_claim', 'exposure', 'net', 'roe', 'rate'
+        "amount",
+        "claim",
+        "premi",
+        "premium",
+        "tsi",
+        "sum_insured",
+        "share_percent",
+        "our_share",
+        "reinsurer_share",
+        "comm",
+        "netto",
+        "incurred",
+        "loss_scaled",
+        "paid_claim",
+        "exposure",
+        "net",
+        "roe",
+        "rate",
     ]
-    if any(mk in col_clean for mk in money_keywords) and not any(tx in col_clean for tx in ['event', 'cause', 'desc', 'note', 'type', 'name', 'occupation']):
+    is_money = any(mk in col_clean for mk in money_keywords)
+    is_text = any(
+        tx in col_clean
+        for tx in ["event", "cause", "desc", "note", "type", "name", "occupation"]
+    )
+
+    if is_money and not is_text:
         return "NUMERIC(20, 2)"
 
-    # 3. SEMUA Kolom Tanggal, Polis, dan Teks Bebas -> WAJIB TEXT
     return "TEXT"
 
 
-def inspect_and_save_file(
-    file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
-) -> dict:
-    file_id = f"file_{uuid.uuid4().hex}"
-    saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
-    with open(saved_path, "wb") as f:
-        f.write(file_bytes)
-
-    available_sheets = []
-    lower_name = filename.lower()
-
-    if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
-        try:
-            # 1. Ekstraksi XML dan baca status state tiap sheet
-            with zipfile.ZipFile(saved_path, "r") as z:
-                with z.open("xl/workbook.xml") as f_xml:
-                    tree = ET.parse(f_xml)
-                    root = tree.getroot()
-                    for elem in root.iter():
-                        if elem.tag.endswith("sheet"):
-                            sheet_name = elem.attrib.get("name")
-                            sheet_state = elem.attrib.get("state", "visible").lower()
-                            if sheet_name:
-                                available_sheets.append({
-                                    "name": sheet_name,
-                                    "is_hidden": sheet_state in ["hidden", "veryhidden"]
-                                })
-        except Exception:
-            wb = openpyxl.load_workbook(saved_path, read_only=False, keep_links=False)
-            available_sheets = [
-                {
-                    "name": ws.title,
-                    "is_hidden": ws.sheet_state in ["hidden", "veryHidden"]
-                }
-                for ws in wb.worksheets
-            ]
-            wb.close()
-            
-    elif lower_name.endswith(".xls"):
-        excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
-        available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
-    elif lower_name.endswith(".csv"):
-        available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
-
-    # Ambil default sheet pertama yang berstatus visible (tidak hidden)
-    visible_first = next((s["name"] for s in available_sheets if not s["is_hidden"]), available_sheets[0]["name"] if available_sheets else "")
-
-    return {
-        "file_id": file_id,
-        "available_sheets": [s["name"] for s in available_sheets],
-        "sheet_details": available_sheets,
-        "default_sheet": visible_first,
-        "saved_path": saved_path,
-    }
+# ==========================================
+# COB & TABLE RESOLVERS
+# ==========================================
 
 
 def resolve_cob_from_sheet(sheet_name: str) -> str:
-    """
-    Menentukan kode COB secara dinamis berdasarkan nama sheet.
-    Memastikan 'Non Marine', 'Fire', 'Kebakaran', 'Property' dipeta ke 'fire'.
-    """
     if not sheet_name:
         return "credit"
 
-    # 1. Bersihkan string (termasuk karakter tersembunyi \xa0 dari Excel)
-    raw_str = str(sheet_name).lower().replace('\xa0', ' ').strip()
+    raw_str = str(sheet_name).lower().replace("\xa0", " ").strip()
     clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", raw_str)
     clean_name = re.sub(r"\s+", " ", clean_name).strip()
 
-    # 2. Prioritas Utama: Deteksi Fire / Non Marine / Kebakaran / Property
     fire_keywords = ["fire", "kebakaran", "non marine", "nonmarine", "property"]
-    if any(k in clean_name for k in fire_keywords) or any(k in raw_str for k in fire_keywords):
+    if any(k in clean_name for k in fire_keywords) or any(
+        k in raw_str for k in fire_keywords
+    ):
         return "fire"
 
-    # 3. Cek exact & substring pada SHEET_TO_TABLE_MAPPING dari config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
     if raw_str in SHEET_TO_TABLE_MAPPING:
@@ -150,7 +120,6 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
         if kw_clean and (kw_clean in clean_name or kw_clean in raw_str):
             return SHEET_TO_TABLE_MAPPING[keyword]
 
-    # 4. Fallback murni
     return to_snake_case(clean_name).replace(" ", "_")
 
 
@@ -161,11 +130,19 @@ def get_target_table_name(
     override_cob: str = None,
     custom_table_name: str = None,
 ) -> str:
-    if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() not in ["string", "none", "null"]:
+    if (
+        custom_table_name
+        and custom_table_name.strip()
+        and custom_table_name.strip().lower() not in ["string", "none", "null"]
+    ):
         return custom_table_name.strip().lower().replace(" ", "_")
 
     raw_target = selected_sheet
-    if override_cob and override_cob.strip() and override_cob.strip().lower() not in ["string", "none", "null"]:
+    if (
+        override_cob
+        and override_cob.strip()
+        and override_cob.strip().lower() not in ["string", "none", "null"]
+    ):
         raw_target = override_cob.strip()
 
     cob_suffix = resolve_cob_from_sheet(raw_target)
@@ -173,8 +150,6 @@ def get_target_table_name(
     clean_tipe = tipe_proses.lower().strip().replace(" ", "_")
     clean_cedant = cedant.lower().strip().replace(" ", "_")
 
-    # 1. KHUSUS ASKRIDA:
-    # Format tabel {tipe}_{cob}_{cedant} dan menggunakan kata "kredit" untuk claim
     if "askrida" in clean_cedant:
         if clean_tipe == "claim":
             if cob_suffix == "credit":
@@ -184,12 +159,83 @@ def get_target_table_name(
                 cob_suffix = "credit"
         return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
 
-    # 2. UNTUK SEMUA CEDANT LAIN (Jakre Jabar, ACA, dll):
-    # Paksa kata 'kredit' kembali ke standar bahasa Inggris 'credit'
     if cob_suffix == "kredit":
         cob_suffix = "credit"
 
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
+
+
+# ==========================================
+# FILE INSPECTION & PARSING
+# ==========================================
+
+
+def inspect_and_save_file(
+    file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
+) -> dict:
+    file_id = f"file_{uuid.uuid4().hex}"
+    saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
+    with open(saved_path, "wb") as f:
+        f.write(file_bytes)
+
+    available_sheets = []
+    sheet_columns = {}
+    lower_name = filename.lower()
+
+    if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
+        wb = openpyxl.load_workbook(saved_path, read_only=True, data_only=True)
+        available_sheets = [
+            {"name": ws.title, "is_hidden": ws.sheet_state in ["hidden", "veryHidden"]}
+            for ws in wb.worksheets
+        ]
+        wb.close()
+
+        # Baca nama kolom tiap sheet
+        for s in available_sheets:
+            try:
+                df_header = pd.read_excel(saved_path, sheet_name=s["name"], nrows=3)
+                cols = [str(c).strip() for c in df_header.columns if str(c).strip() and not str(c).startswith("Unnamed:")]
+                sheet_columns[s["name"]] = cols
+            except Exception:
+                sheet_columns[s["name"]] = []
+
+    elif lower_name.endswith(".xls"):
+        excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
+        available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
+        for s in excel_obj.sheet_names:
+            try:
+                df_header = pd.read_excel(saved_path, sheet_name=s, nrows=3, engine="xlrd")
+                cols = [str(c).strip() for c in df_header.columns if str(c).strip() and not str(c).startswith("Unnamed:")]
+                sheet_columns[s] = cols
+            except Exception:
+                sheet_columns[s] = []
+
+    elif lower_name.endswith(".csv"):
+        available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
+        try:
+            df_header = pd.read_csv(saved_path, nrows=3)
+            sheet_columns["CSV_DATA"] = [str(c).strip() for c in df_header.columns]
+        except Exception:
+            sheet_columns["CSV_DATA"] = []
+
+    visible_first = next(
+        (s["name"] for s in available_sheets if not s["is_hidden"]),
+        available_sheets[0]["name"] if available_sheets else ""
+    )
+
+    return {
+        "file_id": file_id,
+        "available_sheets": [s["name"] for s in available_sheets],
+        "sheet_details": available_sheets,
+        "sheet_columns": sheet_columns, # <-- Dikirim ke frontend
+        "default_sheet": visible_first,
+        "saved_path": saved_path,
+    }
+
+
+# ==========================================
+# DATABASE CHECKS & DDL EXECUTION
+# ==========================================
 
 
 def check_target_table_in_db(
@@ -234,7 +280,11 @@ def check_target_table_in_db(
         mapping_matrix = [
             {
                 "column_name": sanitize_column_name(col),
-                "status": "MATCH" if sanitize_column_name(col) in db_columns else "MISSING_IN_DB",
+                "status": (
+                    "MATCH"
+                    if sanitize_column_name(col) in db_columns
+                    else "MISSING_IN_DB"
+                ),
             }
             for col in master_cols
         ]
@@ -274,7 +324,9 @@ def execute_create_table(table_name: str, schema_ddl: list) -> dict:
         safe_col_name = sanitize_column_name(col["column_name"])
         if safe_col_name == "id":
             continue
-        sql_type = col.get("suggested_sql_type") or infer_sql_type_dynamically(safe_col_name)
+        sql_type = col.get("suggested_sql_type") or infer_sql_type_dynamically(
+            safe_col_name
+        )
         column_definitions.append(f'"{safe_col_name}" {sql_type}')
 
     create_table_query = f"""

@@ -10,7 +10,7 @@ import { formatBytes } from "../../../utils/fileUtils";
 export default function FileQueueItem({
   fileObj,
   index,
-  globalPeriodType, // 'quarterly' | 'monthly'
+  globalPeriodType,
   onUpdateField,
   onRemove,
 }) {
@@ -19,7 +19,6 @@ export default function FileQueueItem({
 
   return (
     <div className="p-3 bg-white border border-slate-200/90 rounded-2xl shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3 hover:border-blue-300 transition-all">
-      {/* Kiri: File Info */}
       <div className="flex items-start gap-3 min-w-0 flex-1">
         <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
           XLSX
@@ -60,9 +59,7 @@ export default function FileQueueItem({
         </div>
       </div>
 
-      {/* Kanan: Metadata Form Bersih */}
       <div className="flex items-center gap-2 shrink-0 bg-slate-50/80 p-2 rounded-xl border border-slate-100 flex-wrap sm:flex-nowrap">
-        {/* Kategori */}
         <div className="flex flex-col">
           <span className="text-[8px] uppercase font-bold text-slate-400 ml-1 mb-0.5">
             Kategori
@@ -78,7 +75,6 @@ export default function FileQueueItem({
           </select>
         </div>
 
-        {/* COB / Sheet Target */}
         <div className="flex flex-col">
           <span className="text-[8px] uppercase font-bold text-slate-400 ml-1 mb-0.5">
             COB / Sheet
@@ -102,7 +98,6 @@ export default function FileQueueItem({
           </select>
         </div>
 
-        {/* Periode (Hanya Dropdown Bersih Sesuai Pilihan Global Di Atas) */}
         <div className="flex flex-col">
           <span className="text-[8px] uppercase font-bold text-slate-400 ml-1 mb-0.5">
             Periode
@@ -120,7 +115,6 @@ export default function FileQueueItem({
           </select>
         </div>
 
-        {/* Tahun */}
         <div className="flex flex-col">
           <span className="text-[8px] uppercase font-bold text-slate-400 ml-1 mb-0.5">
             Tahun
@@ -140,7 +134,6 @@ export default function FileQueueItem({
           </select>
         </div>
 
-        {/* Tombol Hapus */}
         <button
           type="button"
           onClick={() => onRemove(index)}

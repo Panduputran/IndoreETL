@@ -19,6 +19,16 @@ export async function inspectFile(file, tipeProses = 'premi', cedantCode = '') {
   }
 }
 
+export async function processWithMapping(payload) {
+  try {
+    const response = await apiClient.post('/etl/process-with-mapping', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Gagal proses ETL dengan mapping:', error);
+    throw error;
+  }
+}
+
 export async function checkDatabase(payload) {
   try {
     const response = await apiClient.post('/etl/check-db', payload);

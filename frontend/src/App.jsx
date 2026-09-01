@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 // Import Layout & Provider Context
 import MainLayout from './components/layout/MainLayout';
 import { SidebarProvider } from './components/context/SidebarContext';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Import Pages
 import UploadBordero from './pages/UploadBordero';

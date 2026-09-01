@@ -9,21 +9,58 @@ from app.database.connection import engine
 from app.services.inspector_service import sanitize_column_name
 
 
+def load_dataframe_to_postgres(
+    df: pd.DataFrame, table_name: str, if_exists: str = "append"
+) -> int:
+    if df is None or df.empty:
+        return 0
+
+    clean_table = re.sub(r"[^a-zA-Z0-9_]", "", table_name.lower())
+
+    df_clean = df.copy()
+    # Format seluruh nama kolom database menjadi snake_case aman
+    df_clean.columns = [
+        re.sub(r"[^a-zA-Z0-9_]", "_", str(col).strip().lower())
+        for col in df_clean.columns
+    ]
+
+    df_clean = df_clean.where(pd.notnull(df_clean), None)
+
+    with engine.begin() as connection:
+        df_clean.to_sql(
+            name=clean_table,
+            con=connection,
+            schema="public",
+            if_exists=if_exists,
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+    return len(df_clean)
+
+
 def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     """
     Menentukan tipe data DDL PostgreSQL.
-    Semua kolom yang rawan geser baris dijadikan TEXT agar PostgreSQL 
+    Semua kolom yang rawan geser baris dijadikan TEXT agar PostgreSQL
     100% TIDAK PERNAH MENOLAK DATA.
     """
     col_lower = str(col_name).lower().strip()
 
     # 1. Nomor urut murni -> BIGINT
-    if col_lower in {'no', 'id', 'seq', 'id_seq', 'no_urut'}:
+    if col_lower in {"no", "id", "seq", "id_seq", "no_urut"}:
         return "BIGINT"
 
     # 2. Kolom Uang Murni (HANYA TSI & PREMI UTAMA)
     # Kolom share (termasuk premium_reinsurer_share_spl) kita buat TEXT agar aman dari data geser!
-    core_money_cols = {'tsi_100', 'premium_100', 'claim_100', 'sum_insured', 'claim_amount_100'}
+    core_money_cols = {
+        "tsi_100",
+        "premium_100",
+        "claim_100",
+        "sum_insured",
+        "claim_amount_100",
+    }
     if col_lower in core_money_cols:
         return "NUMERIC(20, 2)"
 
@@ -44,12 +81,23 @@ def force_clean_numeric(v):
         return float(v)
 
     s = str(v).strip()
-    if s.lower() in ['', 'nan', 'none', 'null', '<na>', '-', 'nil', 'new', 'renewal', 'endorsement']:
+    if s.lower() in [
+        "",
+        "nan",
+        "none",
+        "null",
+        "<na>",
+        "-",
+        "nil",
+        "new",
+        "renewal",
+        "endorsement",
+    ]:
         return 0.0
 
     # Hapus koma dan spasi
-    s = s.replace(',', '').replace(' ', '')
-    if s.startswith('(') and s.endswith(')'):
+    s = s.replace(",", "").replace(" ", "")
+    if s.startswith("(") and s.endswith(")"):
         s = f"-{s[1:-1]}"
 
     try:
@@ -64,61 +112,94 @@ def _psql_insert_copy(table, conn, keys, data_iter):
     Aman dari teks multiline (\n, \r), delimiter terpotong, serta nilai liar pada numerik.
     """
     dbapi_conn = conn.connection
-    
+
     # Deteksi indeks kolom numerik
     money_keywords = [
-        'amount', 'claim', 'premi', 'premium', 'tsi', 'sum_insured',
-        'share', 'comm', 'netto', 'incurred', 'loss', 'exposure', 'net', 
-        'roe', 'rate', 'spl', 'qs', 'surplus', 'biaya', 'paid'
+        "amount",
+        "claim",
+        "premi",
+        "premium",
+        "tsi",
+        "sum_insured",
+        "share",
+        "comm",
+        "netto",
+        "incurred",
+        "loss",
+        "exposure",
+        "net",
+        "roe",
+        "rate",
+        "spl",
+        "qs",
+        "surplus",
+        "biaya",
+        "paid",
     ]
-    
+
     # PERBAIKAN: Sertakan kata kunci tanggal & teks agar date_of_loss / loss_date TIDAK terdeteksi sebagai numerik
     text_or_date_keywords = [
-        'type', 'name', 'desc', 'note', 'event', 'cause', 'code', 'info',
-        'class_of_business', 'date', 'tgl', 'time', 'dt', 'period'
+        "type",
+        "name",
+        "desc",
+        "note",
+        "event",
+        "cause",
+        "code",
+        "info",
+        "class_of_business",
+        "date",
+        "tgl",
+        "time",
+        "dt",
+        "period",
     ]
-    
+
     numeric_indices = set()
     for idx, col in enumerate(keys):
         c_lower = str(col).lower().strip()
-        if any(mk in c_lower for mk in money_keywords) and not any(tx in c_lower for tx in text_or_date_keywords):
+        if any(mk in c_lower for mk in money_keywords) and not any(
+            tx in c_lower for tx in text_or_date_keywords
+        ):
             numeric_indices.add(idx)
 
     s_buf = io.StringIO()
     # Gunakan csv.writer standar agar seluruh enter (\n, \r) dan kutip ter-escape sempurna
-    csv_writer = csv.writer(s_buf, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    csv_writer = csv.writer(
+        s_buf, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL
+    )
 
     for row in data_iter:
         clean_row = []
         for idx, val in enumerate(row):
             # 1. Null / Kosong
             if val is None or pd.isna(val):
-                clean_row.append('')
+                clean_row.append("")
                 continue
 
             val_str = str(val).strip()
-            if val_str.lower() in ['nat', 'nan', 'none', 'null', '<na>', '', 'nil']:
-                clean_row.append('')
+            if val_str.lower() in ["nat", "nan", "none", "null", "<na>", "", "nil"]:
+                clean_row.append("")
                 continue
 
             # 2. Proteksi Kolom Numerik Murni
             if idx in numeric_indices:
-                s = val_str.replace(',', '').replace(' ', '')
-                if s.startswith('(') and s.endswith(')'):
+                s = val_str.replace(",", "").replace(" ", "")
+                if s.startswith("(") and s.endswith(")"):
                     s = f"-{s[1:-1]}"
                 try:
                     num = float(s)
                     if math.isnan(num) or math.isinf(num):
-                        clean_row.append('0.00')
+                        clean_row.append("0.00")
                     else:
                         clean_row.append(f"{num:.2f}")
                 except (ValueError, TypeError):
-                    clean_row.append('0.00')
+                    clean_row.append("0.00")
                 continue
 
             # 3. Kolom Teks / Tanggal: Bersihkan karakter null byte (\x00)
-            clean_val = val_str.replace('\x00', '')
-            if re.match(r'^-?\d+\.0$', clean_val):
+            clean_val = val_str.replace("\x00", "")
+            if re.match(r"^-?\d+\.0$", clean_val):
                 clean_val = clean_val[:-2]
 
             clean_row.append(clean_val)
@@ -126,8 +207,10 @@ def _psql_insert_copy(table, conn, keys, data_iter):
         csv_writer.writerow(clean_row)
 
     s_buf.seek(0)
-    columns = ', '.join([f'"{k}"' for k in keys])
-    table_name = f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
+    columns = ", ".join([f'"{k}"' for k in keys])
+    table_name = (
+        f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
+    )
 
     with dbapi_conn.cursor() as cur:
         # Gunakan sintaks COPY FORMAT CSV
@@ -141,10 +224,10 @@ def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
         column_definitions = []
         for col in df.columns:
             safe_col = sanitize_column_name(col)
-            
-            if safe_col.lower() == 'id':
+
+            if safe_col.lower() == "id":
                 continue
-                
+
             sample_series = df[col]
             sql_type = get_precise_sql_type(safe_col, sample_series)
             column_definitions.append(f'"{safe_col}" {sql_type}')
@@ -166,9 +249,9 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
 
     df_db = df.copy()
     df_db.columns = [sanitize_column_name(c) for c in df_db.columns]
-    
-    if 'id' in df_db.columns:
-        df_db = df_db.drop(columns=['id'])
+
+    if "id" in df_db.columns:
+        df_db = df_db.drop(columns=["id"])
 
     # 1. Bersihkan semua kolom NUMERIC langsung di DataFrame
     for col in df_db.columns:
@@ -185,30 +268,38 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
             con=conn,
             if_exists="append",
             index=False,
-            method=_psql_insert_copy
+            method=_psql_insert_copy,
         )
 
     return len(df_db)
 
 
-def smart_load_to_db(df_clean: pd.DataFrame, table_name: str, periode_lengkap: str) -> dict:
+def smart_load_to_db(
+    df_clean: pd.DataFrame, table_name: str, periode_lengkap: str
+) -> dict:
     insp = inspect(engine)
     table_name_lower = table_name.lower()
     df_clean.columns = [c.lower() for c in df_clean.columns]
-    
+
     col_where = "reff_of_no_bordereaux" if "askrida" in table_name_lower else "period"
     count_lama = 0
 
     if insp.has_table(table_name_lower):
-        query_cek = text(f'SELECT COUNT(*) FROM "{table_name_lower}" WHERE {col_where} = :periode')
+        query_cek = text(
+            f'SELECT COUNT(*) FROM "{table_name_lower}" WHERE {col_where} = :periode'
+        )
 
         try:
             with engine.connect() as conn:
-                count_lama = conn.execute(query_cek, {"periode": periode_lengkap}).scalar() or 0
+                count_lama = (
+                    conn.execute(query_cek, {"periode": periode_lengkap}).scalar() or 0
+                )
 
             if count_lama > 0:
                 with engine.begin() as connection:
-                    query_hapus = text(f'DELETE FROM "{table_name_lower}" WHERE {col_where} = :periode')
+                    query_hapus = text(
+                        f'DELETE FROM "{table_name_lower}" WHERE {col_where} = :periode'
+                    )
                     connection.execute(query_hapus, {"periode": periode_lengkap})
         except Exception as e:
             print(f"[!] Warning saat pengecekan DB: {e}")
@@ -220,5 +311,5 @@ def smart_load_to_db(df_clean: pd.DataFrame, table_name: str, periode_lengkap: s
         "table_name": table_name_lower,
         "periode": periode_lengkap,
         "deleted_old_rows": count_lama,
-        "inserted_rows": inserted_rows
+        "inserted_rows": inserted_rows,
     }

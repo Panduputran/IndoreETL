@@ -33,14 +33,11 @@ export default function UploadWidget({
       : "quarterly";
   });
 
-  // State Pilihan Massal (Apply All)
   const [globalCategory, setGlobalCategory] = useState("");
   const [globalSelectedSheet, setGlobalSelectedSheet] = useState("");
 
   const [cedantSearchQuery, setCedantSearchQuery] = useState("");
   const [isCedantDropdownOpen, setIsCedantDropdownOpen] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmInputText, setConfirmInputText] = useState("");
 
   const cedantWrapperRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -71,7 +68,6 @@ export default function UploadWidget({
       c.code.toLowerCase().includes(cedantSearchQuery.toLowerCase()),
   );
 
-  // Ambil daftar unik seluruh Sheet / COB dari semua file yang sudah selesai di-inspect
   const uniqueAvailableSheets = useMemo(() => {
     const sheetMap = new Map();
     files.forEach((file) => {
@@ -95,7 +91,6 @@ export default function UploadWidget({
     );
   };
 
-  // Handler Terapkan Massal Kategori
   const handleApplyAllCategory = () => {
     if (!globalCategory) return;
     setFiles((prev) =>
@@ -106,14 +101,12 @@ export default function UploadWidget({
     );
   };
 
-  // Handler Terapkan Massal Sheet / COB hasil inspect Excel
   const handleApplyAllSheet = () => {
     if (!globalSelectedSheet) return;
     const targetClean = globalSelectedSheet.trim().toLowerCase();
 
     setFiles((prev) =>
       prev.map((f) => {
-        // Cari kecocokan sheetName secara fleksibel (case-insensitive & trim)
         const matched = f.available_cobs?.find(
           (c) => c.sheetName.trim().toLowerCase() === targetClean,
         );
@@ -187,6 +180,7 @@ export default function UploadWidget({
         isInspecting: true,
         file_id: null,
         available_sheets: [],
+        available_sheets_columns: {},
         available_cobs: [],
         selectedSheet: "",
         cob: defaultCobForCedant,
@@ -208,7 +202,9 @@ export default function UploadWidget({
           item.category,
           selectedCedant.code,
         );
+
         const sheets = res.data?.available_sheets || [];
+        const sheetCols = res.data?.sheet_columns || {}; // <-- Dapatkan daftar kolom tiap sheet dari backend
         const returnedFileId = res.data?.file_id || null;
 
         const detectedCobs = sheets.map((sheet) => ({
@@ -227,13 +223,14 @@ export default function UploadWidget({
           isInspecting: false,
           file_id: returnedFileId,
           available_sheets: sheets,
+          available_sheets_columns: sheetCols, // <-- Simpan ke state file agar terbaca di ColumnMapper
           available_cobs: detectedCobs,
           selectedSheet: defaultSheet,
           cob: finalCob,
         };
       } catch (err) {
         console.error(`Gagal inspect file ${item.name}:`, err);
-        return { ...item, isInspecting: false };
+        return { ...item, isInspecting: false, available_sheets_columns: {} };
       }
     });
 
@@ -294,30 +291,23 @@ export default function UploadWidget({
         f.receivedDate,
     );
 
-  const expectedConfirmationText = selectedCedant
-    ? `${selectedCedant.code.toUpperCase()}-PROCESS-ALL`
-    : "CONFIRM";
+  // Mengirim payload langsung ke tahap mapping tanpa mengetik verifikasi
+  const handleProceedToMapping = () => {
+    if (!isFormValid) return;
 
-  const handleExecuteFinal = () => {
-    if (confirmInputText.trim() !== expectedConfirmationText) return;
-    setShowConfirmModal(false);
-
-    // 1. Simpan salinan payload sebelum state dibersihkan
     const payload = {
       cedant: selectedCedant,
       files: [...files],
       uploadMode: uploadMode,
-      activityTitle: expectedConfirmationText,
+      activityTitle: `${selectedCedant.code.toUpperCase()}-PROCESS-ALL`,
     };
 
-    // 2. Hapus storage dan kosongkan state berkas
     sessionStorage.removeItem(SESSION_KEY);
     setFiles([]);
     setSelectedCedant(null);
     setGlobalCategory("");
     setGlobalSelectedSheet("");
 
-    // 3. Kirim payload ke tahap berikutnya
     if (onNext) {
       onNext(payload);
     }
@@ -325,7 +315,6 @@ export default function UploadWidget({
 
   return (
     <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xs border border-slate-200/80 w-full space-y-6 text-xs font-sans">
-      {/* Top Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <h1 className="text-lg font-bold text-slate-900 tracking-tight">
           Upload Berkas Bordero
@@ -339,7 +328,6 @@ export default function UploadWidget({
         </button>
       </div>
 
-      {/* Row 1: Cedant Selector & Pipeline Status */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
         <div
           className="lg:col-span-6 bg-slate-50/50 p-4 rounded-2xl border border-slate-200/70 relative"
@@ -450,7 +438,6 @@ export default function UploadWidget({
         </div>
       </div>
 
-      {/* Dropzone Box */}
       <div className="bg-white border border-slate-200/80 rounded-3xl p-5 md:p-6 space-y-5 shadow-2xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
           <div>
@@ -482,7 +469,6 @@ export default function UploadWidget({
           </div>
         </div>
 
-        {/* Dropzone Area */}
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
@@ -520,7 +506,6 @@ export default function UploadWidget({
           </span>
         </div>
 
-        {/* Header List Antrean + Kontrol Massal (Apply All) & Switch Periode */}
         <div className="space-y-3 pt-2">
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2 shrink-0">
@@ -538,16 +523,13 @@ export default function UploadWidget({
               </span>
             </div>
 
-            {/* Kontrol Aksi Massal & Periode */}
             <div className="flex flex-wrap items-center gap-3 xl:justify-end">
-              {/* Terapkan Massal Kategori & COB / Sheet */}
               {files.length > 0 && (
                 <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Massal:
                   </span>
 
-                  {/* 1. Kategori Massal */}
                   <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-0.5">
                     <select
                       value={globalCategory}
@@ -568,8 +550,6 @@ export default function UploadWidget({
                     </button>
                   </div>
 
-                  {/* 2. COB / Sheet Massal (Membaca nama sheet hasil inspect file) */}
-                  {/* Dropdown & Tombol Apply Sheet Massal */}
                   <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-0.5">
                     <select
                       value={globalSelectedSheet}
@@ -595,7 +575,6 @@ export default function UploadWidget({
                 </div>
               )}
 
-              {/* Switch Periode Global: Kuartal / Triwulan vs Bulanan */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Format Periode:
@@ -628,7 +607,6 @@ export default function UploadWidget({
             </div>
           </div>
 
-          {/* List Files */}
           {files.length === 0 ? (
             <div className="p-8 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 text-slate-400 italic text-xs">
               Belum ada berkas yang diunggah.
@@ -650,7 +628,6 @@ export default function UploadWidget({
         </div>
       </div>
 
-      {/* Footer Submit Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
         <button
           type="button"
@@ -663,67 +640,17 @@ export default function UploadWidget({
         <button
           type="button"
           disabled={!isFormValid}
-          onClick={() => {
-            setConfirmInputText("");
-            setShowConfirmModal(true);
-          }}
+          onClick={handleProceedToMapping}
           className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all cursor-pointer ${
             isFormValid
               ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:-translate-y-px"
               : "bg-slate-100 text-slate-400 cursor-not-allowed"
           }`}
         >
-          <span>Lanjut & Proses ETL</span>
+          <span>Lanjut ke Mapping IPR</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
-            <h3 className="text-sm font-bold text-slate-900">
-              Konfirmasi Eksekusi ETL
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Ketik{" "}
-              <code className="bg-slate-100 text-rose-600 font-mono font-bold px-2 py-0.5 rounded border border-slate-200">
-                {expectedConfirmationText}
-              </code>{" "}
-              untuk menjalankan proses:
-            </p>
-            <input
-              type="text"
-              autoFocus
-              value={confirmInputText}
-              onChange={(e) => setConfirmInputText(e.target.value)}
-              placeholder="Ketik persis teks di atas..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:bg-white focus:border-blue-500 transition-all"
-            />
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-semibold rounded-xl cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={confirmInputText.trim() !== expectedConfirmationText}
-                onClick={handleExecuteFinal}
-                className={`px-4 py-2 font-bold rounded-xl shadow-xs transition-all text-xs cursor-pointer ${
-                  confirmInputText.trim() === expectedConfirmationText
-                    ? "bg-rose-600 hover:bg-rose-700 text-white"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                Konfirmasi & Jalankan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
