@@ -94,11 +94,12 @@ export default function HistoryView() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
-              Total Log
+              Total Log Tercatat
             </span>
-            <span className="text-2xl font-semibold text-slate-800">{totalRows}</span>
+            <span className="text-2xl font-bold text-slate-900">{totalRows}</span>
+            <span className="text-xs text-slate-400 block mt-0.5">di database PostgreSQL</span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-slate-50 text-slate-600 flex items-center justify-center border border-slate-200/60">
+          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
             <Database className="w-5 h-5" />
           </div>
         </div>
@@ -108,7 +109,8 @@ export default function HistoryView() {
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
               Proses Sukses
             </span>
-            <span className="text-2xl font-semibold text-emerald-600">{successCount}</span>
+            <span className="text-2xl font-bold text-emerald-600">{successCount}</span>
+            <span className="text-xs text-slate-400 block mt-0.5">pada halaman aktif</span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
             <CheckCircle2 className="w-5 h-5" />
@@ -120,9 +122,10 @@ export default function HistoryView() {
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
               Baris Data Masuk
             </span>
-            <span className="text-2xl font-semibold text-slate-800">
+            <span className="text-2xl font-bold text-slate-900">
               {totalRowsLoaded.toLocaleString('id-ID')}
             </span>
+            <span className="text-xs text-slate-400 block mt-0.5">baris data termuat</span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
             <Layers className="w-5 h-5" />
@@ -132,9 +135,10 @@ export default function HistoryView() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
-              Status Database
+              Status Audit
             </span>
-            <span className="text-sm font-medium text-emerald-600">Terhubung (PostgreSQL)</span>
+            <span className="text-sm font-bold text-slate-800 block">Tersinkronisasi</span>
+            <span className="text-xs text-emerald-600 block mt-0.5">PostgreSQL Logger</span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-slate-50 text-slate-600 flex items-center justify-center border border-slate-200/60">
             <Clock className="w-5 h-5" />

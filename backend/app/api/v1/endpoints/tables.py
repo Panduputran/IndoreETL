@@ -237,6 +237,78 @@ def get_dashboard_summary():
                 for v in sorted(cedant_map.values(), key=lambda x: x["total_rows"], reverse=True)
             ]
 
+            # -------------------------------------------------------------
+            # Analitik Sistem Web (Users, Activity Logs, Presets)
+            # -------------------------------------------------------------
+            user_stats = {"total_users": 0, "active_users": 0, "admin_count": 0, "operator_count": 0, "viewer_count": 0}
+            etl_stats = {"total_runs": 0, "success_runs": 0, "failed_runs": 0, "avg_duration_ms": 0, "recent_logs": []}
+            preset_stats = {"total_presets": 0}
+
+            try:
+                # 1. User Stats
+                user_res = conn.execute(text("SELECT role, is_active, COUNT(*) FROM app_users GROUP BY role, is_active")).fetchall()
+                for r in user_res:
+                    role, is_act, cnt = r[0], r[1], r[2]
+                    user_stats["total_users"] += cnt
+                    if is_act:
+                        user_stats["active_users"] += cnt
+                    if role == "admin":
+                        user_stats["admin_count"] += cnt
+                    elif role == "operator":
+                        user_stats["operator_count"] += cnt
+                    elif role == "viewer":
+                        user_stats["viewer_count"] += cnt
+            except Exception:
+                pass
+
+            try:
+                # 2. ETL Activity Stats
+                etl_summary = conn.execute(text("""
+                    SELECT 
+                        COUNT(*),
+                        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
+                        AVG(duration_ms)
+                    FROM etl_activity_log
+                """)).fetchone()
+
+                if etl_summary and etl_summary[0]:
+                    etl_stats["total_runs"] = etl_summary[0] or 0
+                    etl_stats["success_runs"] = etl_summary[1] or 0
+                    etl_stats["failed_runs"] = etl_summary[2] or 0
+                    etl_stats["avg_duration_ms"] = int(etl_summary[3] or 0)
+
+                recent_res = conn.execute(text("""
+                    SELECT id, cedant_name, cob, category, target_table, rows_inserted, duration_ms, status, executed_at
+                    FROM etl_activity_log
+                    ORDER BY executed_at DESC
+                    LIMIT 6
+                """)).fetchall()
+
+                etl_stats["recent_logs"] = [
+                    {
+                        "id": r[0],
+                        "cedant": r[1],
+                        "cob": r[2],
+                        "category": r[3],
+                        "target_table": r[4],
+                        "rows": r[5],
+                        "duration_ms": r[6],
+                        "status": r[7],
+                        "executed_at": r[8].isoformat() if r[8] else None,
+                    }
+                    for r in recent_res
+                ]
+            except Exception:
+                pass
+
+            try:
+                # 3. Presets Stats
+                preset_cnt = conn.execute(text("SELECT COUNT(*) FROM mapping_presets")).scalar() or 0
+                preset_stats["total_presets"] = preset_cnt
+            except Exception:
+                pass
+
             return {
                 "status": "success",
                 "total_batches": len(tables),
@@ -247,7 +319,12 @@ def get_dashboard_summary():
                 "total_warning_rows": total_warning_rows,
                 "cob_data": cob_data_formatted,
                 "cedant_data": cedant_data_formatted,
-                "tables_detail": tables_detail
+                "tables_detail": tables_detail,
+                "system_analytics": {
+                    "users": user_stats,
+                    "etl": etl_stats,
+                    "presets": preset_stats
+                }
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

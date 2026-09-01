@@ -39,10 +39,10 @@ export default function MainLayout() {
     if (path.includes('/form/form-kredit')) return 'Data Bordero (CREDIT)';
     if (path.includes('/validasi-bordero')) return 'Validasi Bordero';
     if (path.includes('/history')) return 'Riwayat Aktivitas ETL';
-    if (path.includes('/users')) return 'Manajemen Pengguna';
+    if (path.includes('/users')) return 'User Management';
     if (path.includes('/master/mapping')) return 'Master Mapping';
     if (path.includes('/form-ipr')) return 'Kamus Standar IPR';
-    if (path.includes('/user-guide')) return 'Panduan Pengguna';
+    if (path.includes('/user-guide')) return 'User Guide';
     return 'Treaty Management System';
   };
 
@@ -108,7 +108,7 @@ export default function MainLayout() {
                         className="flex items-center gap-2.5 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 transition-colors"
                       >
                         <Users className="w-4 h-4 text-slate-400" />
-                        <span>Manajemen Pengguna</span>
+                        <span>User Management</span>
                       </Link>
                     )}
 

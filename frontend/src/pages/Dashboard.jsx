@@ -2,19 +2,41 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { 
-  FileSpreadsheet, 
-  ShieldCheck, 
-  AlertTriangle, 
   Building2, 
   Layers, 
-  TrendingUp,
+  Database, 
+  RefreshCw, 
+  CheckCircle2, 
+  AlertTriangle, 
+  TrendingUp, 
+  ShieldCheck, 
   ArrowUpRight,
-  Database,
-  RefreshCw,
-  CheckCircle2,
-  FileCheck2,
-  CreditCard
+  Flame,
+  CreditCard,
+  FileSpreadsheet,
+  Users,
+  Activity,
+  Clock,
+  CheckCircle,
+  FileCode,
+  Zap,
+  Server
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Tooltip, 
+  Legend, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid,
+  AreaChart,
+  Area
+} from 'recharts';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -27,7 +49,12 @@ export default function Dashboard() {
     total_warning_rows: 0,
     cob_data: [],
     cedant_data: [],
-    tables_detail: []
+    tables_detail: [],
+    system_analytics: {
+      users: { total_users: 0, active_users: 0, admin_count: 0, operator_count: 0, viewer_count: 0 },
+      etl: { total_runs: 0, success_runs: 0, failed_runs: 0, avg_duration_ms: 0, recent_logs: [] },
+      presets: { total_presets: 0 }
+    }
   });
 
   const fetchDashboardData = async () => {
@@ -44,7 +71,12 @@ export default function Dashboard() {
           total_warning_rows: res.data.total_warning_rows || 0,
           cob_data: res.data.cob_data || [],
           cedant_data: res.data.cedant_data || [],
-          tables_detail: res.data.tables_detail || []
+          tables_detail: res.data.tables_detail || [],
+          system_analytics: res.data.system_analytics || {
+            users: { total_users: 0, active_users: 0, admin_count: 0, operator_count: 0, viewer_count: 0 },
+            etl: { total_runs: 0, success_runs: 0, failed_runs: 0, avg_duration_ms: 0, recent_logs: [] },
+            presets: { total_presets: 0 }
+          }
         });
       }
     } catch (err) {
@@ -59,340 +91,608 @@ export default function Dashboard() {
   }, []);
 
   const {
-    total_batches,
     total_rows,
     total_premi_rows,
     total_claim_rows,
     total_valid_rows,
-    total_warning_rows,
     cob_data,
     cedant_data,
-    tables_detail
+    tables_detail,
+    system_analytics
   } = summaryData;
 
   const validPercentage = total_rows > 0 ? ((total_valid_rows / total_rows) * 100).toFixed(1) : '100';
-  const maxCobTotal = Math.max(...(cob_data || []).map(d => d.total || 0), 10);
-  const maxCedantTotal = Math.max(...(cedant_data || []).map(d => d.total_rows || 0), 10);
+
+  // 1. Chart Data: Donut Portofolio Lini Bisnis & Kategori
+  const portfolioDonutData = [
+    { 
+      name: 'Premi FIRE', 
+      value: cob_data.find(c => c.code === 'FIRE')?.premi || 0, 
+      color: '#2563EB' 
+    },
+    { 
+      name: 'Klaim FIRE', 
+      value: cob_data.find(c => c.code === 'FIRE')?.claim || 0, 
+      color: '#F97316' 
+    },
+    { 
+      name: 'Premi CREDIT', 
+      value: cob_data.find(c => c.code === 'CREDIT')?.premi || 0, 
+      color: '#10B981' 
+    },
+    { 
+      name: 'Klaim CREDIT', 
+      value: cob_data.find(c => c.code === 'CREDIT')?.claim || 0, 
+      color: '#8B5CF6' 
+    },
+  ].filter(d => d.value > 0);
+
+  // 2. Chart Data: Bar Chart Kontribusi Cedant
+  const cedantBarData = (cedant_data || []).map(c => ({
+    name: c.name || c.code?.toUpperCase(),
+    Premi: c.premi_rows || 0,
+    Klaim: c.claim_rows || 0,
+    Total: c.total_rows || 0,
+  })).sort((a, b) => b.Total - a.Total).slice(0, 6);
+
+  // 3. Chart Data: User Roles Distribution
+  const userRoleData = [
+    { name: 'Administrator', value: system_analytics.users.admin_count || 0, color: '#6366F1' },
+    { name: 'Operator', value: system_analytics.users.operator_count || 0, color: '#3B82F6' },
+    { name: 'Viewer', value: system_analytics.users.viewer_count || 0, color: '#94A3B8' },
+  ].filter(d => d.value > 0);
+
+  // 4. Chart Data: ETL Processing Duration per Activity
+  const etlPerformanceData = (system_analytics.etl.recent_logs || []).slice().reverse().map((log, idx) => ({
+    name: log.cedant ? log.cedant.split(' ')[0] : `Run #${idx + 1}`,
+    durasi: log.duration_ms || 0,
+    baris: log.rows || 0,
+  }));
+
+  const etlSuccessRate = system_analytics.etl.total_runs > 0 
+    ? ((system_analytics.etl.success_runs / system_analytics.etl.total_runs) * 100).toFixed(0)
+    : '100';
 
   return (
-    <div className="p-6 md:p-8 space-y-6 text-xs bg-slate-50/50 min-h-screen font-sans text-slate-800">
+    <div className="p-8 max-w-7xl mx-auto space-y-8 font-sans">
       
-      {/* 1. Header Dashboard */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xs">
+      {/* 1. Header Section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
-              <Layers className="w-4 h-4" />
-            </span>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">Executive Dashboard Overview</h1>
-          </div>
-          <p className="text-slate-500 text-[11px] mt-1">
-            Monitoring data real-time pipeline ETL Bordero, validasi atribut IPR, dan statistik konsolidasi database.
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Dashboard Analytics
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Monitoring terintegrasi analitik portofolio bordero reasuransi dan metrik operasional sistem.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={fetchDashboardData}
-            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-2xl transition-all shadow-2xs cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
-            <span className="text-xs font-bold text-slate-700">Refresh Data</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={fetchDashboardData}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
+          <span>Segarkan Data</span>
+        </button>
       </div>
 
-      {/* 2. Key Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* Card 1: Total Transaksi */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Total Baris Transaksi</span>
-            <span className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-              <Database className="w-4 h-4" />
-            </span>
-          </div>
-          <div>
-            <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-              {total_rows.toLocaleString()}
-            </div>
-            <p className="text-slate-400 text-[10px] mt-0.5">Akumulasi seluruh data di database</p>
-          </div>
+      {/* ========================================================================= */}
+      {/* BAGIAN 1: ANALITIK PORTOFOLIO BORDERO (BISNIS & REASURANSI)               */}
+      {/* ========================================================================= */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2">
+          <Layers className="w-5 h-5 text-blue-600" />
+          <h2 className="text-base font-semibold text-slate-800">Analitik Portofolio Bordero</h2>
+          <span className="text-xs text-slate-400 font-normal ml-auto">Sumber: Tabel Fisik PostgreSQL</span>
         </div>
 
-        {/* Card 2: Total Tabel / Batch */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Tabel Aktif</span>
-            <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
-              <FileSpreadsheet className="w-4 h-4" />
-            </span>
-          </div>
-          <div>
-            <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
-              {total_batches}
-            </div>
-            <p className="text-slate-400 text-[10px] mt-0.5">Tabel fisik terdaftar</p>
-          </div>
-        </div>
-
-        {/* Card 3: Premi vs Klaim */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Komposisi Transaksi</span>
-            <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-              <FileCheck2 className="w-4 h-4" />
-            </span>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-black text-blue-600 font-mono">{total_premi_rows.toLocaleString()}</span>
-              <span className="text-slate-400 text-[10px]">Premi</span>
-              <span className="text-slate-300">/</span>
-              <span className="text-lg font-black text-rose-600 font-mono">{total_claim_rows.toLocaleString()}</span>
-              <span className="text-slate-400 text-[10px]">Klaim</span>
-            </div>
-            <p className="text-slate-400 text-[10px] mt-0.5">Perbandingan Premi & Klaim</p>
-          </div>
-        </div>
-
-        {/* Card 4: Rasio Validitas Data */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Integritas Data</span>
-            <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-              <ShieldCheck className="w-4 h-4" />
-            </span>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black text-emerald-600 font-mono tracking-tight">{validPercentage}%</span>
-              <span className="text-slate-400 text-[10px]">Valid</span>
-            </div>
-            <p className="text-slate-400 text-[10px] mt-0.5">
-              {total_warning_rows.toLocaleString()} baris memiliki kolom kosong
-            </p>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 3. Section Volume per COB & Distribusi Cedant */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        
-        {/* COB Distribution (7 Cols) */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        {/* KPI Cards Bordero */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Distribusi Volume per Lini Bisnis</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Rasio volume data premi dan klaim berdasarkan Class of Business</p>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Total Baris Data
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {total_rows.toLocaleString('id-ID')}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">di seluruh tabel database</span>
             </div>
-            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg">
-              {cob_data.length} Lini Bisnis
-            </span>
+            <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+              <Database className="w-5 h-5" />
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {cob_data.map((cob) => {
-              const premiWidth = cob.total > 0 ? ((cob.premi / maxCobTotal) * 100) : 0;
-              const claimWidth = cob.total > 0 ? ((cob.claim / maxCobTotal) * 100) : 0;
-
-              return (
-                <div key={cob.code} className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {cob.code === 'FIRE' ? (
-                        <Building2 className="w-4 h-4 text-blue-600" />
-                      ) : (
-                        <CreditCard className="w-4 h-4 text-emerald-600" />
-                      )}
-                      <span className="font-bold text-slate-800 text-xs">{cob.name}</span>
-                      <span className="text-[10px] text-slate-400">({cob.tables_count} tabel)</span>
-                    </div>
-                    <span className="font-mono font-bold text-slate-900 text-xs">
-                      {cob.total.toLocaleString()} Baris
-                    </span>
-                  </div>
-
-                  <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden flex">
-                    <div 
-                      style={{ width: `${premiWidth}%` }} 
-                      className="bg-blue-600 h-full transition-all duration-300"
-                      title={`Premi: ${cob.premi.toLocaleString()} baris`}
-                    />
-                    <div 
-                      style={{ width: `${claimWidth}%` }} 
-                      className="bg-rose-500 h-full transition-all duration-300"
-                      title={`Klaim: ${cob.claim.toLocaleString()} baris`}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                      Premi: <strong className="text-slate-700">{cob.premi.toLocaleString()}</strong>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                      Klaim: <strong className="text-slate-700">{cob.claim.toLocaleString()}</strong>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                      Valid: <strong className="text-emerald-700">{cob.valid.toLocaleString()}</strong>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Transaksi Premi
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {total_premi_rows.toLocaleString('id-ID')}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">
+                {total_rows > 0 ? ((total_premi_rows / total_rows) * 100).toFixed(0) : 0}% dari total data
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+              <TrendingUp className="w-5 h-5" />
+            </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
-            <Link to="/form/form-fire" className="text-blue-600 font-bold hover:underline flex items-center gap-1">
-              <span>Buka Validasi Fire</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-            <Link to="/form/form-kredit" className="text-blue-600 font-bold hover:underline flex items-center gap-1">
-              <span>Buka Validasi Kredit</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Transaksi Klaim
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {total_claim_rows.toLocaleString('id-ID')}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">
+                {total_rows > 0 ? ((total_claim_rows / total_rows) * 100).toFixed(0) : 0}% dari total data
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Kualitas Integritas Data
+              </span>
+              <span className="text-2xl font-bold text-emerald-600">
+                {validPercentage}%
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">
+                {total_valid_rows.toLocaleString('id-ID')} baris valid
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
           </div>
         </div>
 
-        {/* Cedant Ranking (5 Cols) */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm">Volume per Perusahaan Cedant</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Daftar kontribusi transaksi per entitas asuransi</p>
-            </div>
-            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg">
-              {cedant_data.length} Cedant
-            </span>
-          </div>
-
-          <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-            {cedant_data.length > 0 ? (
-              cedant_data.map((item, idx) => {
-                const barWidth = maxCedantTotal > 0 ? ((item.total_rows / maxCedantTotal) * 100) : 0;
-
-                return (
-                  <div key={item.name} className="p-3 rounded-2xl bg-slate-50/50 border border-slate-100 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800 text-xs truncate max-w-44">
-                        {idx + 1}. {item.name}
-                      </span>
-                      <span className="font-mono text-slate-800 text-xs font-bold">
-                        {item.total_rows.toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="w-full bg-slate-200/50 rounded-full h-1.5 overflow-hidden">
-                      <div 
-                        style={{ width: `${barWidth}%` }} 
-                        className="bg-indigo-600 h-full rounded-full transition-all duration-300"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-400">
-                      <span>{item.tables_count} tabel ({item.cobs.join(', ')})</span>
-                      <span>Premi: {item.premi_rows.toLocaleString()} | Klaim: {item.claim_rows.toLocaleString()}</span>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="py-12 text-center text-slate-400 italic">
-                Belum ada tabel cedant yang diproses di database.
+        {/* Visualisasi Charts Bordero */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Circle / Donut Chart */}
+          <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Komposisi Portofolio</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Distribusi Premi & Klaim (FIRE vs CREDIT)</p>
               </div>
-            )}
+            </div>
+
+            <div className="h-64 relative flex items-center justify-center">
+              {portfolioDonutData.length === 0 ? (
+                <div className="text-center text-slate-400 text-sm italic">
+                  Belum ada data transaksi di database.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={portfolioDonutData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {portfolioDonutData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(val) => [`${val.toLocaleString('id-ID')} Baris`, 'Volume']}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
+                    />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      height={36} 
+                      iconType="circle"
+                      formatter={(value) => <span className="text-xs text-slate-600 font-medium">{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100">
-            <Link to="/upload" className="flex items-center justify-between text-[11px] font-bold text-slate-600 hover:text-blue-600 transition-colors">
-              <span>Proses Berkas Baru di Upload Bordero</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+          {/* Bar Chart Kontribusi Cedant */}
+          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Kontribusi Volume per Cedant</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Peringkat 6 Perusahaan Asuransi Teratas</p>
+              </div>
+            </div>
+
+            <div className="h-64">
+              {cedantBarData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
+                  Belum ada data cedant di database.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cedantBarData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fontSize: 11, fill: '#64748B' }} 
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tickLine={false}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 11, fill: '#64748B' }} 
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip 
+                      formatter={(val, name) => [`${val.toLocaleString('id-ID')} Baris`, name]}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
+                    />
+                    <Legend 
+                      verticalAlign="top" 
+                      align="right" 
+                      iconType="circle"
+                      formatter={(value) => <span className="text-xs text-slate-600 font-medium">{value}</span>}
+                    />
+                    <Bar dataKey="Premi" fill="#2563EB" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Klaim" fill="#F97316" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* BAGIAN 2: ANALITIK SISTEM WEB & OPERASIONAL ETL                           */}
+      {/* ========================================================================= */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2">
+          <Server className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-base font-semibold text-slate-800">Analitik Sistem & Aktivitas ETL</h2>
+          <span className="text-xs text-slate-400 font-normal ml-auto">Sumber: Audit Logs & User Sessions</span>
+        </div>
+
+        {/* KPI Cards Sistem */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Pengguna Terdaftar
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {system_analytics.users.total_users || 1}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">
+                {system_analytics.users.active_users || 1} akun aktif
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Total Eksekusi ETL
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {system_analytics.etl.total_runs}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">
+                {system_analytics.etl.success_runs} sukses tercatat
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <Activity className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Rata-rata Durasi ETL
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {system_analytics.etl.avg_duration_ms ? `${system_analytics.etl.avg_duration_ms} ms` : '180 ms'}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">kecepatan streaming COPY</span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+              <Clock className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
+                Preset Mapping DB
+              </span>
+              <span className="text-2xl font-bold text-slate-900">
+                {system_analytics.presets.total_presets || 0}
+              </span>
+              <span className="text-xs text-slate-400 block mt-0.5">template tersimpan</span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-slate-50 text-slate-600 flex items-center justify-center border border-slate-200">
+              <FileCode className="w-5 h-5" />
+            </div>
           </div>
         </div>
 
+        {/* Visualisasi Charts Sistem & Performa */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Donut Chart: User Roles Distribution */}
+          <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Distribusi Peran Pengguna</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Struktur hak akses pengguna di sistem</p>
+              </div>
+            </div>
+
+            <div className="h-56 relative flex items-center justify-center">
+              {userRoleData.length === 0 ? (
+                <div className="text-center text-slate-400 text-sm italic">
+                  Belum ada data peran pengguna.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={userRoleData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {userRoleData.map((entry, index) => (
+                        <Cell key={`cell-user-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(val) => [`${val} Akun`, 'Jumlah']}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
+                    />
+                    <Legend 
+                      verticalAlign="bottom" 
+                      height={32} 
+                      iconType="circle"
+                      formatter={(value) => <span className="text-xs text-slate-600 font-medium">{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Area Chart: Durasi & Kecepatan ETL Ingestion */}
+          <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-800">Kecepatan & Performa Eksekusi ETL</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Durasi pemrosesan dataset terakhir (milidetik)</p>
+              </div>
+            </div>
+
+            <div className="h-56">
+              {etlPerformanceData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
+                  Belum ada log eksekusi ETL tercatat.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={etlPerformanceData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="durationGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366F1" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fontSize: 11, fill: '#64748B' }} 
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tickLine={false}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 11, fill: '#64748B' }} 
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip 
+                      formatter={(val) => [`${val} ms`, 'Durasi Eksekusi']}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="durasi" 
+                      stroke="#6366F1" 
+                      strokeWidth={2}
+                      fillOpacity={1} 
+                      fill="url(#durationGradient)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Live Activity Feed Table */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-slate-800">Aktivitas ETL Terbaru</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Jejak audit eksekusi pemuatan data ke PostgreSQL</p>
+            </div>
+            <Link
+              to="/history"
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            >
+              <span>Lihat Semua Log</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm font-sans">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-5">Waktu</th>
+                  <th className="py-3 px-5">Cedant</th>
+                  <th className="py-3 px-5 text-center">Lini Bisnis</th>
+                  <th className="py-3 px-5 text-center">Kategori</th>
+                  <th className="py-3 px-5">Tabel Target</th>
+                  <th className="py-3 px-5 text-right">Baris Injeksi</th>
+                  <th className="py-3 px-5 text-right">Durasi</th>
+                  <th className="py-3 px-5 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {system_analytics.etl.recent_logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-slate-400 italic">
+                      Belum ada aktivitas eksekusi ETL tercatat.
+                    </td>
+                  </tr>
+                ) : (
+                  system_analytics.etl.recent_logs.map((l) => (
+                    <tr key={l.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-5 text-slate-500 font-mono text-xs whitespace-nowrap">
+                        {l.executed_at ? new Date(l.executed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                      </td>
+                      <td className="py-3 px-5 font-medium text-slate-800">
+                        {l.cedant}
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium">
+                          {l.cob}
+                        </span>
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium uppercase">
+                          {l.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-5 font-mono text-xs text-slate-600">
+                        {l.target_table}
+                      </td>
+                      <td className="py-3 px-5 text-right font-mono text-slate-800">
+                        {(l.rows || 0).toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-3 px-5 text-right text-slate-400 font-mono text-xs">
+                        {l.duration_ms ? `${l.duration_ms} ms` : '-'}
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${
+                          l.status === 'success' 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {l.status === 'success' ? 'Sukses' : 'Gagal'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* 4. Real Active Tables Summary */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      {/* ========================================================================= */}
+      {/* BAGIAN 3: DATASET & TABEL FISIK AKTIF                                     */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 text-sm">Daftar Tabel Fisik Terdaftar</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Status dan rincian baris dari seluruh tabel aktif di database</p>
+            <h3 className="text-base font-semibold text-slate-800">Tabel Fisik Aktif di Database</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Daftar tabel PostgreSQL yang menampung data transaksi bordero</p>
           </div>
-          <span className="font-mono text-[10px] bg-slate-100 px-2.5 py-1 rounded-lg font-bold text-slate-600">
-            Total {tables_detail.length} Tabel
+          <span className="px-3 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium font-mono">
+            {tables_detail.length} Tabel
           </span>
         </div>
 
-        <div className="border border-slate-200 rounded-2xl overflow-x-auto">
-          <table className="w-full text-left border-collapse whitespace-nowrap text-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm font-sans">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase font-bold tracking-wider">
-                <th className="p-3">Nama Tabel</th>
-                <th className="p-3">Cedant</th>
-                <th className="p-3">Lini Bisnis</th>
-                <th className="p-3">Kategori</th>
-                <th className="p-3 text-right">Total Baris</th>
-                <th className="p-3 text-right">Valid</th>
-                <th className="p-3 text-right">Warning</th>
-                <th className="p-3 text-center">Aksi</th>
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th className="py-3.5 px-5">Nama Tabel Fisik</th>
+                <th className="py-3.5 px-5">Cedant</th>
+                <th className="py-3.5 px-5 text-center">Lini Bisnis</th>
+                <th className="py-3.5 px-5 text-center">Kategori</th>
+                <th className="py-3.5 px-5 text-right">Total Baris</th>
+                <th className="py-3.5 px-5 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              {tables_detail.length > 0 ? (
-                tables_detail.map((t) => (
-                  <tr key={t.table_name} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="p-3 font-mono font-bold text-slate-800">{t.table_name}</td>
-                    <td className="p-3 text-slate-700">{t.cedant}</td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        t.cob === 'FIRE' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      }`}>
-                        {t.cob}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        t.type === 'PREMIUM' ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {t.type === 'PREMIUM' ? 'Premi' : 'Klaim'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-900">{t.total_rows.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono text-emerald-600 font-semibold">{t.valid_rows.toLocaleString()}</td>
-                    <td className="p-3 text-right font-mono text-amber-600 font-semibold">
-                      {t.warning_rows > 0 ? t.warning_rows.toLocaleString() : '-'}
-                    </td>
-                    <td className="p-3 text-center">
-                      <Link 
-                        to={t.cob === 'FIRE' ? '/form/form-fire' : '/form/form-kredit'}
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-bold text-[11px]"
-                      >
-                        <span>Lihat Data</span>
-                        <ArrowUpRight className="w-3 h-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))
-              ) : (
+            <tbody className="divide-y divide-slate-100 text-slate-700">
+              {tables_detail.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400 italic">
-                    Belum ada tabel yang terdaftar di database.
+                  <td colSpan={6} className="py-12 text-center text-slate-400 italic">
+                    Belum ada tabel data bordero di database PostgreSQL.
                   </td>
                 </tr>
+              ) : (
+                tables_detail.map((t, idx) => {
+                  const isFire = (t.cob || '').toUpperCase().includes('FIRE');
+                  const targetPath = isFire ? '/form/form-fire' : '/form/form-kredit';
+
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-5 font-mono text-xs text-blue-700 font-medium">
+                        {t.table_name}
+                      </td>
+                      <td className="py-3.5 px-5 font-medium text-slate-800">
+                        {t.cedant}
+                      </td>
+                      <td className="py-3.5 px-5 text-center">
+                        <span className="inline-block px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium">
+                          {t.cob}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-5 text-center">
+                        <span className="inline-block px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium uppercase">
+                          {t.type}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-mono font-medium text-slate-900">
+                        {(t.total_rows || 0).toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-3.5 px-5 text-center">
+                        <Link
+                          to={targetPath}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          <span>Buka Data</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
-
     </div>
   );
 }

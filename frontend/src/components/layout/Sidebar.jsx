@@ -69,8 +69,8 @@ export default function Sidebar({ isBlocked = false }) {
   ];
 
   const secondaryItems = [
-    { id: 'users', label: 'Manajemen Pengguna', path: '/users', icon: Users },
-    { id: 'guide', label: 'Panduan Pengguna', path: '/user-guide', icon: HelpCircle },
+    { id: 'users', label: 'User Management', path: '/users', icon: Users },
+    { id: 'guide', label: 'User Guide', path: '/user-guide', icon: HelpCircle },
   ];
 
   return (
