@@ -12,7 +12,8 @@ Dokumentasi arsitektur dan struktur direktori frontend untuk Treaty Management S
 * **Multi-Schema Master Support:** Mendukung pemrosesan dan visualisasi skema IPR terpisah berdasarkan Lini Bisnis (Class of Business / COB):
   * **IPR FIRE / Property Master:** 51 atribut aset fisik, tarif premi, okupasi, zona risiko gempa bumi (EQ).
   * **IPR KREDIT / Financial Master:** 36–48 atribut perbankan, plafon kredit, debitur, tenor, LKP, cause of loss.
-* **Unified COB Data Viewer:** Menyatukan visualisasi data Premi dan Klaim dalam satu tampilan tabel interaktif dengan filter tabs (Semua / Premi / Klaim) serta Confirmation Modal untuk proteksi penghapusan data.
+* **Unified COB Data Viewer & Validasi:** Menampilkan visualisasi data Premi dan Klaim dalam tampilan tabel interaktif dengan pilihan Per Cedant maupun Semua Cedant, filter status Valid/Warning, filter periode dinamis, serta Modal Ekspor Data (Halaman Aktif / Seluruh Data Terfilter).
+* **Live Analytics Dashboard:** Menampilkan metrik real-time dari PostgreSQL, perbandingan volume Premi vs Klaim, distribusi per lini bisnis (Fire & Kredit), peringkat kontribusi cedant, dan tabel rincian dataset aktif.
 
 ---
 

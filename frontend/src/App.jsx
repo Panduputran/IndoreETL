@@ -13,7 +13,8 @@ import FormKredit from './pages/form/FormKredit';
 import MasterMapping from './pages/MasterMapping';
 import FormIpr from './pages/FormIpr';
 import Dashboard from './pages/Dashboard';
-import UserGuide from './pages/UserGuide'
+import UserGuide from './pages/UserGuide';
+import ValidasiBordero from './pages/ValidasiBordero';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/upload" element={<UploadBordero />} />
             <Route path="/form/form-fire" element={<FormFire />} />
             <Route path="/form/form-kredit" element={<FormKredit />} />
+            <Route path="/validasi-bordero" element={<ValidasiBordero />} />
             <Route path="/master/mapping" element={<MasterMapping />} />
             <Route path="/form-ipr" element={<FormIpr />} />
             <Route path="/dashboard" element={<Dashboard />} />

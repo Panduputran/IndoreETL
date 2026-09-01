@@ -92,9 +92,27 @@ DB_PASSWORD=password_database_anda
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=indore_etl
+
+# JWT Authentication Config
+JWT_SECRET_KEY=indore-treaty-ru-secret-key-super-secure-2025
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=480
 ```
 
-### 6. Jalankan Server Backend
+### 6. Jalankan Database Migration (Alembic)
+Jalankan migrasi untuk membuat tabel sistem (`app_users`, `etl_activity_log`, `mapping_presets`):
+```powershell
+alembic upgrade head
+```
+
+### 7. Buat Akun Administrator Default
+Jalankan script seeder untuk membuat akun admin pertama:
+```powershell
+python seed_admin.py
+```
+*(Akun default: Username: `admin`, Password: `admin123`)*
+
+### 8. Jalankan Server Backend
 Jalankan server pengembangan FastAPI dengan hot-reload:
 ```powershell
 uvicorn app.main:app --reload --port 8000

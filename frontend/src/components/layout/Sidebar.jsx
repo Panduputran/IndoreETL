@@ -8,7 +8,7 @@ export default function Sidebar({ isBlocked = false }) {
   // State untuk melacak menu mana yang sedang dibuka (dropdown)
   const [openDropdown, setOpenDropdown] = useState('');
 
-  // Data menu: Dashboard, Upload, Bordero Cedant, Master, IPR
+  // Data menu: Dashboard, Upload, View Bordero, Validasi Bordero, Master, IPR
   const menuItems = [
     { 
       id: 'dashboard', 
@@ -30,6 +30,12 @@ export default function Sidebar({ isBlocked = false }) {
         { id: 'fire', label: 'FIRE', path: '/form/form-fire' },
         { id: 'credit', label: 'CREDIT', path: '/form/form-kredit' }
       ]
+    },
+    {
+      id: 'validasi-bordero',
+      label: 'Validasi Bordero',
+      path: '/validasi-bordero',
+      icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
     },
     {
       id: 'master',

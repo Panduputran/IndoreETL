@@ -14,47 +14,76 @@ import {
   Check,
   DatabaseZap,
   FolderOpen,
-  Calendar
+  Calendar,
+  Layers,
+  FileSpreadsheet,
+  X,
+  FileDown,
+  Info
 } from 'lucide-react';
 
 export default function FormFire() {
-  const fireTables = [
-    { id: 'premi_buanaindependent_fire', label: 'Bordero Premi Fire (Buana Independent)', type: 'PREMIUM' },
-    { id: 'premi_tripakarta_fire', label: 'Bordero Premi Fire (Tripakarta)', type: 'PREMIUM' },
-    { id: 'premi_aca_fire', label: 'Bordero Premi Fire (ACA)', type: 'PREMIUM' },
-    { id: 'claim_buanaindependent_fire', label: 'Bordero Klaim Fire (Buana Independent)', type: 'KLAIM' },
-    { id: 'claim_tripakarta_fire', label: 'Bordero Klaim Fire (Tripakarta)', type: 'KLAIM' },
-    { id: 'claim_aca_fire', label: 'Bordero Klaim Fire (ACA)', type: 'KLAIM' }
+  // Master Cedant untuk COB Fire
+  const fireCedants = [
+    { code: 'ALL', name: 'Semua Cedant', is_all: true },
+    { code: 'askrida', name: 'PT Asuransi Bangun Askrida (Askrida)', prefix_premi: 'premi_askrida_fire', prefix_claim: 'claim_askrida_fire' },
+    { code: 'aca', name: 'PT Asuransi Central Asia (ACA)', prefix_premi: 'premi_aca_fire', prefix_claim: 'claim_aca_fire' },
+    { code: 'tripakarta', name: 'PT Asuransi Tri Pakarta (Tripakarta)', prefix_premi: 'premi_tripakarta_fire', prefix_claim: 'claim_tripakarta_fire' },
+    { code: 'buanaindependent', name: 'PT Asuransi Buana Independent (Buana Independent)', prefix_premi: 'premi_buanaindependent_fire', prefix_claim: 'claim_buanaindependent_fire' },
   ];
 
-  const [selectedTable, setSelectedTable] = useState('premi_buanaindependent_fire');
-  const [openTableDropdown, setOpenTableDropdown] = useState(false);
-  const tableDropdownRef = useRef(null);
+  // State Pilihan Cedant & Tipe (PREMIUM / KLAIM)
+  const [selectedCedant, setSelectedCedant] = useState('ALL');
+  const [selectedType, setSelectedType] = useState('PREMIUM'); // 'PREMIUM' | 'KLAIM'
+
+  const [openCedantDropdown, setOpenCedantDropdown] = useState(false);
+  const cedantDropdownRef = useRef(null);
 
   // State Filter Status Validasi
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL' | 'VALID' | 'WARNING'
   const [openStatusDropdown, setOpenStatusDropdown] = useState(false);
   const statusDropdownRef = useRef(null);
 
-  // State Filter Periode Dinamis + Count
+  // State Filter Periode Dinamis
   const [periodList, setPeriodList] = useState([]);
   const [filterPeriod, setFilterPeriod] = useState('ALL');
   const [openPeriodDropdown, setOpenPeriodDropdown] = useState(false);
   const periodDropdownRef = useRef(null);
 
+  // State Data & Table
   const [columns, setColumns] = useState([]);
   const [dataList, setDataList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isTableExists, setIsTableExists] = useState(true);
+  const [isAggregateView, setIsAggregateView] = useState(true);
+  const [targetTablesCount, setTargetTablesCount] = useState(0);
 
+  // State Paginasi
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRows, setTotalRows] = useState(0);
   const [warningTotal, setWarningTotal] = useState(0);
   const [validTotal, setValidTotal] = useState(0);
+
+  // State Modal Export
+  const [openExportModal, setOpenExportModal] = useState(false);
+  const [exportScope, setExportScope] = useState('CURRENT_PAGE'); // 'CURRENT_PAGE' | 'ALL_DATA'
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Menentukan tabel target aktif berdasarkan selectedCedant dan selectedType
+  const currentTableName = useMemo(() => {
+    if (selectedCedant === 'ALL') {
+      return selectedType === 'PREMIUM' ? 'all_premi_fire' : 'all_claim_fire';
+    }
+    const found = fireCedants.find(c => c.code === selectedCedant);
+    if (found) {
+      return selectedType === 'PREMIUM' ? found.prefix_premi : found.prefix_claim;
+    }
+    return selectedType === 'PREMIUM' ? `premi_${selectedCedant}_fire` : `claim_${selectedCedant}_fire`;
+  }, [selectedCedant, selectedType]);
 
   // Kata kunci kolom wajib utama
   const mandatoryKeywords = [
@@ -71,7 +100,7 @@ export default function FormFire() {
     'no', 'id', 'remarks', 'unnamed', 'notes', 'object_info_1', 'object_info_2',
     'treaty_id', 'treaty_year', 'reinsurer_id', 'claim_event',
     'start_period_master_policy', 'our_share_percent', 'reinsurer_share_percent',
-    'created_at', 'period'
+    'created_at', 'period', 'cedant_name'
   ]);
 
   const excludedSubstrings = [
@@ -79,7 +108,7 @@ export default function FormFire() {
     'breakdown', 'mb', 'stock', 'tpl', 'bi'
   ];
 
-  // 1. Ambil daftar periode unik beserta count baris per periode dari backend
+  // 1. Ambil daftar periode unik
   const fetchPeriodList = async (tableName) => {
     try {
       const response = await axios.get(`http://localhost:8000/api/v1/tables/${tableName}/periods`);
@@ -87,12 +116,12 @@ export default function FormFire() {
         setPeriodList(response.data.periods || []);
       }
     } catch (err) {
-      console.error("Gagal mengambil daftar periode:", err);
+      console.error('Gagal mengambil daftar periode:', err);
       setPeriodList([]);
     }
   };
 
-  // 2. Mengambil data tabel dengan filter status & periode
+  // 2. Fetch data tabel
   const fetchFireData = async (
     tableName, 
     targetPage = 1, 
@@ -113,6 +142,8 @@ export default function FormFire() {
 
       if (response.data.status === 'empty') {
         setIsTableExists(false);
+        setIsAggregateView(response.data.is_aggregate || false);
+        setTargetTablesCount(0);
         setDataList([]);
         setColumns([]);
         setTotalRows(0);
@@ -125,6 +156,8 @@ export default function FormFire() {
 
       if (response.data.status === 'success') {
         setIsTableExists(true);
+        setIsAggregateView(response.data.is_aggregate || false);
+        setTargetTablesCount(response.data.target_tables_count || 1);
         setColumns(response.data.columns || []);
         setDataList(response.data.data || []);
         setTotalRows(response.data.total_rows || 0);
@@ -134,7 +167,7 @@ export default function FormFire() {
         setPage(response.data.page || 1);
       }
     } catch (err) {
-      console.error("Gagal mengambil data Fire dari database:", err);
+      console.error('Gagal mengambil data Fire dari database:', err);
       setIsTableExists(false);
       setDataList([]);
       setColumns([]);
@@ -148,18 +181,19 @@ export default function FormFire() {
   };
 
   useEffect(() => {
-    fetchPeriodList(selectedTable);
+    fetchPeriodList(currentTableName);
     setFilterPeriod('ALL');
-  }, [selectedTable]);
+  }, [currentTableName]);
 
   useEffect(() => {
-    fetchFireData(selectedTable, page, limit, filterStatus, filterPeriod);
-  }, [selectedTable, limit, filterStatus, filterPeriod]);
+    fetchFireData(currentTableName, page, limit, filterStatus, filterPeriod);
+  }, [currentTableName, page, limit, filterStatus, filterPeriod]);
 
+  // Click outside listener untuk dropdowns
   useEffect(() => {
     function handleClickOutside(event) {
-      if (tableDropdownRef.current && !tableDropdownRef.current.contains(event.target)) {
-        setOpenTableDropdown(false);
+      if (cedantDropdownRef.current && !cedantDropdownRef.current.contains(event.target)) {
+        setOpenCedantDropdown(false);
       }
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target)) {
         setOpenStatusDropdown(false);
@@ -172,9 +206,14 @@ export default function FormFire() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleTableChange = (newTableId) => {
-    setSelectedTable(newTableId);
-    setOpenTableDropdown(false);
+  const handleCedantChange = (cedantCode) => {
+    setSelectedCedant(cedantCode);
+    setOpenCedantDropdown(false);
+    setPage(1);
+  };
+
+  const handleTypeChange = (typeVal) => {
+    setSelectedType(typeVal);
     setPage(1);
   };
 
@@ -190,6 +229,75 @@ export default function FormFire() {
     setPage(1);
   };
 
+  // Logika Eksekusi Ekspor Data
+  const executeExport = async () => {
+    setIsExporting(true);
+    try {
+      let exportRows = [];
+      let exportCols = columns;
+
+      if (exportScope === 'CURRENT_PAGE') {
+        exportRows = dataList;
+      } else {
+        // Ambil seluruh data terfilter dari backend
+        const response = await axios.get(`http://localhost:8000/api/v1/tables/${currentTableName}/data`, {
+          params: {
+            page: 1,
+            limit: 100000,
+            status: filterStatus,
+            period: filterPeriod
+          }
+        });
+        if (response.data.status === 'success') {
+          exportRows = response.data.data || [];
+          exportCols = response.data.columns || columns;
+        }
+      }
+
+      if (exportRows.length === 0) {
+        alert('Tidak ada baris data untuk diekspor.');
+        setIsExporting(false);
+        setOpenExportModal(false);
+        return;
+      }
+
+      // Bangun konten CSV dengan UTF-8 BOM agar kompatibel dengan Excel tanpa merusak karakter/angka
+      const headers = exportCols.join(',');
+      const rows = exportRows.map(row => 
+        exportCols.map(col => {
+          let val = row[col];
+          if (val === null || val === undefined) val = '';
+          val = String(val).replace(/"/g, '""');
+          return `"${val}"`;
+        }).join(',')
+      );
+
+      const csvContent = '\uFEFF' + [headers, ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      
+      const cedantLabel = selectedCedant === 'ALL' ? 'SEMUA_CEDANT' : selectedCedant.toUpperCase();
+      const typeLabel = selectedType === 'PREMIUM' ? 'PREMI' : 'KLAIM';
+      const periodLabel = filterPeriod === 'ALL' ? 'SEMUA_PERIODE' : filterPeriod.replace(/\s+/g, '_');
+      const scopeLabel = exportScope === 'CURRENT_PAGE' ? `HAL_${page}` : 'ALL';
+      
+      link.setAttribute('download', `BORDERO_FIRE_${cedantLabel}_${typeLabel}_${periodLabel}_${scopeLabel}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setOpenExportModal(false);
+    } catch (err) {
+      console.error('Gagal mengekspor data:', err);
+      alert('Terjadi kesalahan saat memproses ekspor data.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Evaluasi kolom kosong untuk baris yang sedang tampil
   const processedData = useMemo(() => {
     if (!isTableExists) return [];
@@ -198,7 +306,6 @@ export default function FormFire() {
 
       columns.forEach((col) => {
         const colLower = String(col).toLowerCase().trim();
-        
         const isExcluded = exactExcludedColumns.has(colLower) || excludedSubstrings.some(sub => colLower.includes(sub));
         const isMandatory = mandatoryKeywords.some(kw => colLower === kw || colLower.includes(kw)) && !isExcluded;
 
@@ -233,6 +340,8 @@ export default function FormFire() {
     );
   });
 
+  const activeCedantObj = fireCedants.find(c => c.code === selectedCedant) || { name: selectedCedant };
+
   return (
     <div className="p-6 space-y-5 text-xs bg-slate-50 min-h-screen relative font-sans">
       
@@ -241,17 +350,17 @@ export default function FormFire() {
         <div>
           <h1 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2 mt-0.5">
             <Building2 className="w-5 h-5 text-blue-600 shrink-0" />
-            <span>Bordero Data - COB FIRE (Live PostgreSQL)</span>
+            <span>Bordero Data - COB Fire</span>
           </h1>
           <p className="text-slate-500 text-[11px] mt-0.5">
-            Monitoring data real-time bordero Premi & Klaim khusus Class of Business FIRE / Kebakaran Properti.
+            Monitoring data real-time transaksi Premi dan Klaim Lini Bisnis Fire.
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <button 
             type="button"
-            onClick={() => fetchFireData(selectedTable, page, limit, filterStatus, filterPeriod)}
+            onClick={() => fetchFireData(currentTableName, page, limit, filterStatus, filterPeriod)}
             className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500'}`} />
@@ -260,19 +369,121 @@ export default function FormFire() {
 
           <button 
             type="button" 
-            disabled={!isTableExists}
+            onClick={() => setOpenExportModal(true)}
+            disabled={!isTableExists || totalRows === 0}
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 disabled:cursor-not-allowed text-white font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Export Excel</span>
+            <span>Export Data</span>
           </button>
         </div>
       </div>
 
-      {/* Main Table Card */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+      {/* Main Filter & Navigation Panel */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3.5">
         
-        {/* Filter & Search Bar */}
+        {/* Row 1: Cedant Selector & Transaction Type (Premi vs Klaim) */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          
+          {/* 1. Selector Pilihan Cedant (Default Per-Cedant dengan opsi Konsolidasi) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-500 font-bold text-[11px] flex items-center gap-1 shrink-0">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Target Cedant:</span>
+            </span>
+
+            <div className="relative" ref={cedantDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setOpenCedantDropdown(!openCedantDropdown)}
+                className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:bg-white text-slate-800 font-bold px-3.5 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer min-w-64 justify-between"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <span className={`w-2 h-2 rounded-full ${selectedCedant === 'ALL' ? 'bg-indigo-600' : 'bg-emerald-500'}`}></span>
+                  <span className="truncate">{activeCedantObj.name}</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${openCedantDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {openCedantDropdown && (
+                <div className="absolute left-0 mt-1.5 w-80 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50">
+                    Mode Tampilan
+                  </div>
+
+                  {/* Opsi Semua Cedant */}
+                  <button
+                    type="button"
+                    onClick={() => handleCedantChange('ALL')}
+                    className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
+                      selectedCedant === 'ALL' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                      Semua Cedant
+                    </span>
+                    {selectedCedant === 'ALL' && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                  </button>
+
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 mt-1 border-t border-slate-100">
+                    Daftar Perusahaan
+                  </div>
+
+                  {/* Daftar Cedant Individual */}
+                  {fireCedants.filter(c => !c.is_all).map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => handleCedantChange(c.code)}
+                      className={`w-full text-left px-3.5 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
+                        selectedCedant === c.code ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate pr-2">{c.name}</span>
+                      {selectedCedant === c.code && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 2. Toggle Tipe Transaksi: PREMI vs KLAIM */}
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 font-bold text-[11px] shrink-0">Kategori:</span>
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => handleTypeChange('PREMIUM')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedType === 'PREMIUM'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Premi</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTypeChange('KLAIM')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedType === 'KLAIM'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Klaim</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Row 2: Search, Filter Periode, Status, Limit, and Indicator */}
         <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
           
           <div className="relative w-full xl:w-72 shrink-0">
@@ -289,7 +500,7 @@ export default function FormFire() {
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             
-            {/* 1. Dropdown Filter Periode Dinamis + Count */}
+            {/* Filter Periode Dinamis */}
             <div className="relative" ref={periodDropdownRef}>
               <button
                 type="button"
@@ -348,7 +559,7 @@ export default function FormFire() {
               )}
             </div>
 
-            {/* 2. Dropdown Filter Status Validasi */}
+            {/* Filter Status Validasi */}
             <div className="relative" ref={statusDropdownRef}>
               <button
                 type="button"
@@ -413,44 +624,7 @@ export default function FormFire() {
               )}
             </div>
 
-            {/* 3. Dropdown Pilihan Tabel */}
-            <div className="relative" ref={tableDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setOpenTableDropdown(!openTableDropdown)}
-                className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:bg-white text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer"
-              >
-                <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>
-                  {fireTables.find(t => t.id === selectedTable)?.label || selectedTable}
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openTableDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {openTableDropdown && (
-                <div className="absolute right-0 mt-1.5 w-80 bg-white border border-slate-100 rounded-xl shadow-xl z-30 py-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
-                  {fireTables.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => handleTableChange(t.id)}
-                      className={`w-full text-left px-3 py-2 text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                        selectedTable === t.id ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <span>{t.label}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                        t.type === 'PREMIUM' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
-                      }`}>
-                        {t.type}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 4. Selector Limit */}
+            {/* Selector Limit Baris */}
             <select
               value={limit}
               disabled={!isTableExists}
@@ -464,7 +638,32 @@ export default function FormFire() {
           </div>
         </div>
 
-        {/* Tampilan Empty State atau Tabel */}
+      </div>
+
+      {/* Info Banner Mode Aktif */}
+      <div className="flex items-center justify-between px-1 text-[11px] text-slate-600 font-medium">
+        <div className="flex items-center gap-2">
+          {isAggregateView ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200/80 text-indigo-800 font-semibold">
+              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Tampilan Konsolidasi: Seluruh tabel fisik {selectedType === 'PREMIUM' ? 'Premi' : 'Klaim'} ({targetTablesCount} tabel) disatukan pada antarmuka ini.</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
+              <Building2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Tabel Fisik: <code className="font-mono text-blue-700">{currentTableName}</code></span>
+            </span>
+          )}
+        </div>
+
+        <div>
+          Total: <strong className="text-slate-800">{totalRows.toLocaleString()}</strong> baris data
+        </div>
+      </div>
+
+      {/* Main Table Card */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+        
         {!isTableExists ? (
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 py-16 px-4 text-center">
             <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mb-4 shadow-sm border border-blue-100">
@@ -472,7 +671,7 @@ export default function FormFire() {
             </div>
             <h3 className="text-sm font-bold text-slate-800 mb-1">Data Belum Tersedia</h3>
             <p className="text-slate-500 max-w-md">
-              Tabel <strong className="text-blue-600 font-mono font-medium">{selectedTable}</strong> belum pernah diisi. Silakan lakukan proses ETL Bordero terlebih dahulu di menu Home untuk menampilkan data.
+              Data untuk <strong className="text-blue-600 font-medium">{activeCedantObj.name}</strong> ({selectedType === 'PREMIUM' ? 'Premi' : 'Klaim'}) belum pernah diunggah. Silakan lakukan proses ETL Bordero di menu Upload Bordero.
             </p>
           </div>
         ) : (
@@ -543,6 +742,10 @@ export default function FormFire() {
                                   <span className={`italic font-mono ${isMissingMandatory ? 'text-amber-800 font-bold underline decoration-wavy' : 'text-slate-300'}`}>
                                     [NULL]
                                   </span>
+                                ) : colName === 'cedant_name' ? (
+                                  <span className="inline-block font-bold text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                                    {String(val)}
+                                  </span>
                                 ) : typeof val === 'number' ? (
                                   <span className={`font-mono ${val < 0 ? 'text-rose-600 font-bold' : 'text-slate-700'}`}>
                                     {val.toLocaleString('id-ID')}
@@ -572,6 +775,9 @@ export default function FormFire() {
               <div>
                 Menampilkan <span className="font-bold text-slate-700">{filteredData.length}</span> dari{' '}
                 <span className="font-bold text-slate-700">{totalRows.toLocaleString()}</span> baris data
+                {isAggregateView && (
+                  <span className="ml-2 text-indigo-600 font-semibold">(Gabungan {targetTablesCount} Tabel)</span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -581,7 +787,7 @@ export default function FormFire() {
                 <div className="flex items-center gap-1 ml-2">
                   <button
                     type="button"
-                    onClick={() => fetchFireData(selectedTable, page - 1, limit, filterStatus, filterPeriod)}
+                    onClick={() => fetchFireData(currentTableName, page - 1, limit, filterStatus, filterPeriod)}
                     disabled={page <= 1 || loading}
                     className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
                   >
@@ -589,7 +795,7 @@ export default function FormFire() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => fetchFireData(selectedTable, page + 1, limit, filterStatus, filterPeriod)}
+                    onClick={() => fetchFireData(currentTableName, page + 1, limit, filterStatus, filterPeriod)}
                     disabled={page >= totalPages || loading}
                     className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
                   >
@@ -602,6 +808,127 @@ export default function FormFire() {
         )}
 
       </div>
+
+      {/* Modal Opsi Ekspor Data */}
+      {openExportModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-100">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-5 space-y-4 font-sans">
+            
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <FileDown className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-bold text-slate-800 text-sm">Ekspor Data Bordero Fire</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenExportModal(false)}
+                disabled={isExporting}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1">
+                <p className="font-bold text-slate-800">Ringkasan Target Ekspor:</p>
+                <p className="text-[11px] text-slate-600">
+                  Cedant: <strong className="text-slate-800">{activeCedantObj.name}</strong>
+                </p>
+                <p className="text-[11px] text-slate-600">
+                  Kategori: <strong className="text-slate-800">{selectedType === 'PREMIUM' ? 'Premi Fire' : 'Klaim Fire'}</strong>
+                </p>
+                <p className="text-[11px] text-slate-600">
+                  Filter Aktif: Periode <strong className="text-slate-800">{filterPeriod}</strong> | Status <strong className="text-slate-800">{filterStatus}</strong>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700 block">Pilih Cakupan Baris:</label>
+                
+                {/* Opsi 1: Halaman Aktif */}
+                <label 
+                  onClick={() => setExportScope('CURRENT_PAGE')}
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    exportScope === 'CURRENT_PAGE'
+                      ? 'bg-emerald-50/60 border-emerald-300 ring-2 ring-emerald-500/10'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="exportScope"
+                    checked={exportScope === 'CURRENT_PAGE'}
+                    onChange={() => setExportScope('CURRENT_PAGE')}
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-slate-800">Hanya Halaman Ini ({filteredData.length} baris)</p>
+                    <p className="text-[11px] text-slate-500">Mengekspor baris data yang sedang tampil pada halaman {page}.</p>
+                  </div>
+                </label>
+
+                {/* Opsi 2: Seluruh Data Terfilter */}
+                <label 
+                  onClick={() => setExportScope('ALL_DATA')}
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    exportScope === 'ALL_DATA'
+                      ? 'bg-emerald-50/60 border-emerald-300 ring-2 ring-emerald-500/10'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="exportScope"
+                    checked={exportScope === 'ALL_DATA'}
+                    onChange={() => setExportScope('ALL_DATA')}
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-slate-800">Seluruh Data Terfilter ({totalRows.toLocaleString()} baris)</p>
+                    <p className="text-[11px] text-slate-500">Mengekspor seluruh baris data dari database sesuai kriteria filter aktif.</p>
+                  </div>
+                </label>
+              </div>
+
+              <p className="text-[10px] text-slate-400 italic">
+                *File akan diunduh dalam format CSV terstandarisasi UTF-8 BOM yang langsung terbaca rapi oleh Microsoft Excel.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setOpenExportModal(false)}
+                disabled={isExporting}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeExport}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shadow-2xs cursor-pointer"
+              >
+                {isExporting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memproses Ekspor...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Unduh File</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

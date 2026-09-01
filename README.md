@@ -40,8 +40,10 @@ Platform ini menggabungkan antarmuka web modern berbasis React 19 & Tailwind CSS
   * PT Asuransi Tri Pakarta
 * **Dual IPR Master Schema:** Dukungan pemetaan otomatis untuk 2 Lini Bisnis (Class of Business / COB):
   * **IPR FIRE / Property Master:** 51 atribut standar (TSI 100%, Okupasi, Zona Risiko Gempa EQ, Lokasi Objek).
-  * **IPR KREDIT / Financial Master:** 36–48 atribut standar (Plafon Kredit, Nama Debitur, Tenor, Cause of Loss, LKP/No. Klaim).
 * **High-Throughput Batch Ingestion:** Pemuatan data batch yang hemat memori (memory-safe chunking) menggunakan PostgreSQL COPY stream untuk memproses dataset berskala besar.
+* **Alembic Database Migration:** Pengelolaan evolusi skema tabel sistem terstruktur (`app_users`, `etl_activity_log`, `mapping_presets`) menggunakan Alembic.
+* **Audit Trail & Activity Logging:** Pencatatan otomatis setiap proses ETL ke database lengkap dengan metrik jumlah baris, ukuran file, status, dan durasi eksekusi.
+* **JWT Authentication & User Management:** Autentikasi berbasis JSON Web Token (JWT) dan manajemen peran pengguna (Admin, Operator, Viewer).
 * **Unified Live Data Viewer:** Antarmuka tabel interaktif untuk meninjau data Premi dan Klaim yang telah dinormalisasi lengkap dengan filter tabs, pencarian cepat, paginasi, dan modal konfirmasi penghapusan.
 
 ---

@@ -1,10 +1,14 @@
 import os
 import re
+import time
 from typing import Dict, List, Optional
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.database.connection import SessionLocal
+from app.models.etl_log import EtlActivityLog
+from app.models.mapping_preset import MappingPreset
 from app.database.loader import insert_data_to_db, load_dataframe_to_postgres
 from app.services.etl_factory import run_etl_service
 from app.services.inspector_service import (
@@ -141,6 +145,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
         }
 
         for file_info in payload.files:
+            start_time = time.time()
             file_path = get_temp_file_path(file_info.file_id)
             if not os.path.exists(file_path):
                 raise HTTPException(status_code=404, detail=f"Berkas {file_info.file_id} tidak ditemukan.")
@@ -226,6 +231,29 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
             target_table_name = f"{clean_cat}_{clean_ced}_{clean_cob}"
 
             rows_loaded = load_dataframe_to_postgres(df_transformed, target_table_name)
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Catat aktivitas ke tabel etl_activity_log
+            try:
+                file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                with SessionLocal() as db_session:
+                    log_entry = EtlActivityLog(
+                        cedant_code=payload.cedant_code.lower(),
+                        cedant_name=cedant_label,
+                        cob=file_info.cob.upper(),
+                        category=file_info.category.lower(),
+                        target_table=target_table_name,
+                        period=full_period,
+                        file_name=file_info.file_id,
+                        file_size_bytes=file_size,
+                        rows_inserted=rows_loaded,
+                        status="success",
+                        duration_ms=duration_ms,
+                    )
+                    db_session.add(log_entry)
+                    db_session.commit()
+            except Exception as log_err:
+                print(f"[WARN] Gagal mencatat etl_activity_log: {log_err}")
 
             results.append({
                 "file_id": file_info.file_id,
@@ -236,6 +264,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 "non_ipr_added_count": len(active_non_ipr_columns),
                 "period": full_period,
                 "cedant_name": cedant_label,
+                "duration_ms": duration_ms,
             })
             
         return {"status": "success", "processed_files": results}

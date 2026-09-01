@@ -1,13 +1,14 @@
 // src/constants/data.js
 
 export const CEDANTS = [
-  // 4 Cedant Asli Eksisting
-  { code: 'askrida', name: 'PT Asuransi Askrida', alias: 'CED-ASKRIDA', defaultCob: 'CREDIT' },
-  { code: 'tripakarta', name: 'PT Asuransi Tripakarta', alias: 'CED-TRIPAKARTA', defaultCob: 'FIRE' },
+  { code: 'askrida', name: 'PT Asuransi Bangun Askrida (Askrida)', alias: 'CED-ASKRIDA', defaultCob: 'CREDIT' },
+  { code: 'tripakarta', name: 'PT Asuransi Tri Pakarta (Tripakarta)', alias: 'CED-TRIPAKARTA', defaultCob: 'FIRE' },
   { code: 'aca', name: 'PT Asuransi Central Asia (ACA)', alias: 'CED-ACA', defaultCob: 'FIRE' },
-  { code: 'buanaindependent', name: 'PT Asuransi Buana Independent', alias: 'CED-BUANA', defaultCob: 'FIRE' },
-  { code: 'jamkridajabar', name: 'PT Jamkrida Jabar (Igna Asia)', alias: 'CED-JAMKRIDA-JABAR', defaultCob: 'CREDIT' },
-  { code: 'jakrejabar', name: 'PT Jakre Jabar', alias: 'CED-JAKRE-JABAR', defaultCob: 'CREDIT' }
+  { code: 'buanaindependent', name: 'PT Asuransi Buana Independent (Buana Independent)', alias: 'CED-BUANA', defaultCob: 'FIRE' },
+  { code: 'jamkridajabar', name: 'PT Penjaminan Kredit Daerah Jabar (Jamkrida Jabar)', alias: 'CED-JAMKRIDA-JABAR', defaultCob: 'CREDIT' },
+  { code: 'jakrejabar', name: 'PT Jasa Raharja Cabang Jabar (Jakre Jabar)', alias: 'CED-JAKRE-JABAR', defaultCob: 'CREDIT' },
+  { code: 'askrindo', name: 'PT Asuransi Kredit Indonesia (Askrindo)', alias: 'CED-ASKRINDO', defaultCob: 'CREDIT' },
+  { code: 'jamkrindo', name: 'PT Jaminan Kredit Indonesia (Jamkrindo)', alias: 'CED-JAMKRINDO', defaultCob: 'CREDIT' }
 ];
 
 export const QUARTER_OPTIONS = [
