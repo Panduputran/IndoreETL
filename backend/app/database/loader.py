@@ -72,10 +72,16 @@ def _psql_insert_copy(table, conn, keys, data_iter):
         'roe', 'rate', 'spl', 'qs', 'surplus', 'biaya', 'paid'
     ]
     
+    # PERBAIKAN: Sertakan kata kunci tanggal & teks agar date_of_loss / loss_date TIDAK terdeteksi sebagai numerik
+    text_or_date_keywords = [
+        'type', 'name', 'desc', 'note', 'event', 'cause', 'code', 'info',
+        'class_of_business', 'date', 'tgl', 'time', 'dt', 'period'
+    ]
+    
     numeric_indices = set()
     for idx, col in enumerate(keys):
         c_lower = str(col).lower().strip()
-        if any(mk in c_lower for mk in money_keywords) and not any(tx in c_lower for tx in ['type', 'name', 'desc', 'note', 'event', 'cause', 'code']):
+        if any(mk in c_lower for mk in money_keywords) and not any(tx in c_lower for tx in text_or_date_keywords):
             numeric_indices.add(idx)
 
     s_buf = io.StringIO()
@@ -95,7 +101,7 @@ def _psql_insert_copy(table, conn, keys, data_iter):
                 clean_row.append('')
                 continue
 
-            # 2. Proteksi Kolom Numerik
+            # 2. Proteksi Kolom Numerik Murni
             if idx in numeric_indices:
                 s = val_str.replace(',', '').replace(' ', '')
                 if s.startswith('(') and s.endswith(')'):
@@ -110,7 +116,7 @@ def _psql_insert_copy(table, conn, keys, data_iter):
                     clean_row.append('0.00')
                 continue
 
-            # 3. Kolom Teks: Bersihkan karakter null byte (\x00)
+            # 3. Kolom Teks / Tanggal: Bersihkan karakter null byte (\x00)
             clean_val = val_str.replace('\x00', '')
             if re.match(r'^-?\d+\.0$', clean_val):
                 clean_val = clean_val[:-2]

@@ -64,8 +64,6 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
     return "TEXT"
 
 
-# backend/app/services/inspector_service.py
-
 def inspect_and_save_file(
     file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
 ) -> dict:
@@ -106,7 +104,7 @@ def inspect_and_save_file(
             
     elif lower_name.endswith(".xls"):
         excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
-        available_sheets = [{"name": s, "is_hidden": False} for s in excel_file.sheet_names]
+        available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
     elif lower_name.endswith(".csv"):
         available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
 
@@ -123,10 +121,24 @@ def inspect_and_save_file(
 
 
 def resolve_cob_from_sheet(sheet_name: str) -> str:
-    raw_str = str(sheet_name or "").lower().strip()
+    """
+    Menentukan kode COB secara dinamis berdasarkan nama sheet.
+    Memastikan 'Non Marine', 'Fire', 'Kebakaran', 'Property' dipeta ke 'fire'.
+    """
+    if not sheet_name:
+        return "credit"
+
+    # 1. Bersihkan string (termasuk karakter tersembunyi \xa0 dari Excel)
+    raw_str = str(sheet_name).lower().replace('\xa0', ' ').strip()
     clean_name = re.sub(r"[^a-zA-Z0-9\s]", " ", raw_str)
     clean_name = re.sub(r"\s+", " ", clean_name).strip()
 
+    # 2. Prioritas Utama: Deteksi Fire / Non Marine / Kebakaran / Property
+    fire_keywords = ["fire", "kebakaran", "non marine", "nonmarine", "property"]
+    if any(k in clean_name for k in fire_keywords) or any(k in raw_str for k in fire_keywords):
+        return "fire"
+
+    # 3. Cek exact & substring pada SHEET_TO_TABLE_MAPPING dari config
     if clean_name in SHEET_TO_TABLE_MAPPING:
         return SHEET_TO_TABLE_MAPPING[clean_name]
     if raw_str in SHEET_TO_TABLE_MAPPING:
@@ -138,10 +150,7 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
         if kw_clean and (kw_clean in clean_name or kw_clean in raw_str):
             return SHEET_TO_TABLE_MAPPING[keyword]
 
-    words = set(clean_name.split())
-    if "qs" in words and any(k in words for k in ["klaim", "claim", "premi", "premium"]):
-        return "credit"
-
+    # 4. Fallback murni
     return to_snake_case(clean_name).replace(" ", "_")
 
 
@@ -152,11 +161,11 @@ def get_target_table_name(
     override_cob: str = None,
     custom_table_name: str = None,
 ) -> str:
-    if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() != "string":
+    if custom_table_name and custom_table_name.strip() and custom_table_name.strip().lower() not in ["string", "none", "null"]:
         return custom_table_name.strip().lower().replace(" ", "_")
 
     raw_target = selected_sheet
-    if override_cob and override_cob.strip() and override_cob.strip().lower() != "string":
+    if override_cob and override_cob.strip() and override_cob.strip().lower() not in ["string", "none", "null"]:
         raw_target = override_cob.strip()
 
     cob_suffix = resolve_cob_from_sheet(raw_target)
@@ -164,6 +173,8 @@ def get_target_table_name(
     clean_tipe = tipe_proses.lower().strip().replace(" ", "_")
     clean_cedant = cedant.lower().strip().replace(" ", "_")
 
+    # 1. KHUSUS ASKRIDA:
+    # Format tabel {tipe}_{cob}_{cedant} dan menggunakan kata "kredit" untuk claim
     if "askrida" in clean_cedant:
         if clean_tipe == "claim":
             if cob_suffix == "credit":
@@ -172,6 +183,11 @@ def get_target_table_name(
             if cob_suffix == "kredit":
                 cob_suffix = "credit"
         return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
+
+    # 2. UNTUK SEMUA CEDANT LAIN (Jakre Jabar, ACA, dll):
+    # Paksa kata 'kredit' kembali ke standar bahasa Inggris 'credit'
+    if cob_suffix == "kredit":
+        cob_suffix = "credit"
 
     return f"{clean_tipe}_{clean_cedant}_{cob_suffix}"
 
@@ -235,7 +251,6 @@ def check_target_table_in_db(
         schema_suggestions = []
         for col in master_cols:
             clean_col = sanitize_column_name(col)
-            # Jangan sertakan 'id' di master column suggestion agar tidak bentrok dengan id SERIAL PK
             if clean_col == "id":
                 continue
             suggested_type = infer_sql_type_dynamically(clean_col)

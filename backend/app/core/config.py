@@ -348,11 +348,10 @@ SHEET_TO_TABLE_MAPPING = {
     "klaim jj": "kredit",
     "klaim jakre": "kredit",
     "detail klaim": "kredit",
-    # --- ACA SPESIFIK (Non Marine & Marine Gabungan) ---
-    "Non Marine": "fire",
+    # --- ACA SPESIFIK (Semua Key Wajib Lowercase!) ---
+    "non marine": "fire",
     "non-marine": "fire",
     "nonmarine": "fire",
-    "non marine": "fire",
     "non_marine": "fire",
     "marine": "cargo",
     # --- ACA / TRIPAKARTA ---
@@ -376,7 +375,7 @@ SHEET_TO_TABLE_MAPPING = {
     "premium spl": "fire",
     "premium_qs": "fire",
     "premium_spl": "fire",
-    # --- ASKRIDA (Mengarahkan Sheet QS Credit ke Tabel 'credit') ---
+    # --- ASKRIDA ---
     "premi credit qs": "credit",
     "premi credit": "credit",
     "premi_credit": "credit",
@@ -392,7 +391,7 @@ SHEET_TO_TABLE_MAPPING = {
     "claim qs tw 2": "kredit",
     "claim qs tw 3": "kredit",
     "claim qs tw 4": "kredit",
-    # --- CLAIM (Satu Tabel Fire) ---
+    # --- CLAIM ---
     "claims qs": "fire",
     "claims spl": "fire",
     "claims_qs": "fire",
