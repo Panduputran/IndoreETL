@@ -203,9 +203,11 @@ export default function UploadWidget({
           selectedCedant.code,
         );
 
-        const sheets = res.data?.available_sheets || [];
-        const sheetCols = res.data?.sheet_columns || {}; // <-- Dapatkan daftar kolom tiap sheet dari backend
-        const returnedFileId = res.data?.file_id || null;
+        // Ambil data sheet dan kolom dari payload respons API
+        const responseData = res.data?.data || res.data || {};
+        const sheets = responseData.available_sheets || [];
+        const returnedFileId = responseData.file_id || null;
+        const sheetColumns = responseData.sheet_columns || {};
 
         const detectedCobs = sheets.map((sheet) => ({
           sheetName: sheet,
@@ -223,7 +225,7 @@ export default function UploadWidget({
           isInspecting: false,
           file_id: returnedFileId,
           available_sheets: sheets,
-          available_sheets_columns: sheetCols, // <-- Simpan ke state file agar terbaca di ColumnMapper
+          available_sheets_columns: sheetColumns, // <-- Simpan kolom Excel
           available_cobs: detectedCobs,
           selectedSheet: defaultSheet,
           cob: finalCob,

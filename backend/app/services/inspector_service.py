@@ -1,9 +1,8 @@
+# backend/app/services/inspector_service.py
 import io
 import os
 import re
 import uuid
-import xml.etree.ElementTree as ET
-import zipfile
 import openpyxl
 import pandas as pd
 from sqlalchemy import inspect, text
@@ -17,7 +16,6 @@ from app.database.connection import engine
 from app.utils.helpers import (
     detect_period_from_filename,
     get_temp_file_path,
-    read_excel_dynamic_header,
     save_temp_file,
     to_snake_case,
 )
@@ -29,7 +27,6 @@ os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 # ==========================================
 # SANITIZATION & SCHEMA HELPERS
 # ==========================================
-
 
 def sanitize_column_name(col_name: str) -> str:
     col_name = str(col_name or "").strip().lower()
@@ -46,37 +43,16 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
     col_clean = sanitize_column_name(col_name)
 
     int_cols = {
-        "no",
-        "id",
-        "uw_year",
-        "tahun",
-        "waktu_pertanggungan_bulan",
-        "tenor",
-        "usia_saat_akad_tahun",
-        "seq",
+        "no", "id", "uw_year", "tahun", "waktu_pertanggungan_bulan",
+        "tenor", "usia_saat_akad_tahun", "seq",
     }
     if col_clean in int_cols:
         return "BIGINT"
 
     money_keywords = [
-        "amount",
-        "claim",
-        "premi",
-        "premium",
-        "tsi",
-        "sum_insured",
-        "share_percent",
-        "our_share",
-        "reinsurer_share",
-        "comm",
-        "netto",
-        "incurred",
-        "loss_scaled",
-        "paid_claim",
-        "exposure",
-        "net",
-        "roe",
-        "rate",
+        "amount", "claim", "premi", "premium", "tsi", "sum_insured",
+        "share_percent", "our_share", "reinsurer_share", "comm", "netto",
+        "incurred", "loss_scaled", "paid_claim", "exposure", "net", "roe", "rate",
     ]
     is_money = any(mk in col_clean for mk in money_keywords)
     is_text = any(
@@ -93,7 +69,6 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
 # ==========================================
 # COB & TABLE RESOLVERS
 # ==========================================
-
 
 def resolve_cob_from_sheet(sheet_name: str) -> str:
     if not sheet_name:
@@ -166,8 +141,81 @@ def get_target_table_name(
 
 
 # ==========================================
-# FILE INSPECTION & PARSING
+# FILE INSPECTION & MULTI-HEADER PARSING
 # ==========================================
+
+def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
+    """
+    Mendeteksi baris header bertingkat (parent-child / multi-level headers) 
+    dan menggabungkannya menjadi satu format kolom terstandarisasi.
+    """
+    try:
+        df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None, nrows=25)
+        if df_raw.empty:
+            return []
+
+        header_keywords = {
+            "no", "polis", "policy", "insured", "tertanggung", "name", "nama", 
+            "start", "end", "mulai", "akhir", "tsi", "premi", "premium", "claim", 
+            "klaim", "curr", "currency", "date", "tanggal", "share", "rate", "cob",
+            "certificate", "sertifikat", "loss", "cause", "location", "lokasi",
+            "dol", "spreading", "incurred", "outstanding", "paid", "reinsurer"
+        }
+
+        # 1. Cari baris utama yang memiliki indikasi header terkuat
+        best_row_idx = 0
+        best_score = -1
+        for idx, row in df_raw.iterrows():
+            row_vals = [str(val).strip() for val in row if pd.notnull(val) and str(val).strip() != ""]
+            if not row_vals:
+                continue
+
+            text_cells = sum(1 for v in row_vals if not v.replace(".", "").replace(",", "").replace("-", "").isdigit())
+            keyword_hits = sum(3 for v in row_vals if any(kw in v.lower() for kw in header_keywords))
+            score = text_cells + keyword_hits
+
+            if score > best_score and text_cells >= 2:
+                best_score = score
+                best_row_idx = idx
+
+        # 2. Periksa apakah baris tepat di bawahnya merupakan sub-header (header bertingkat)
+        has_sub_header = False
+        if best_row_idx + 1 < len(df_raw):
+            next_row_vals = [str(val).strip() for val in df_raw.iloc[best_row_idx + 1] if pd.notnull(val) and str(val).strip() != ""]
+            sub_keywords = {"start", "end", "%", "in amount", "amount", "or", "qs", "surplus", "others", "md", "machinery", "stock", "tpl", "bi"}
+            sub_hits = sum(1 for v in next_row_vals if v.lower() in sub_keywords)
+            if sub_hits >= 2:
+                has_sub_header = True
+
+        # 3. Baca dan gabungkan header
+        if has_sub_header:
+            df_multi = pd.read_excel(file_path, sheet_name=sheet_name, header=[best_row_idx, best_row_idx + 1], nrows=2)
+            merged_cols = []
+            for col_tuple in df_multi.columns:
+                p_col = str(col_tuple[0]).strip() if not str(col_tuple[0]).startswith("Unnamed:") else ""
+                c_col = str(col_tuple[1]).strip() if not str(col_tuple[1]).startswith("Unnamed:") else ""
+                
+                if p_col and c_col and p_col.lower() != c_col.lower():
+                    merged_cols.append(f"{p_col} - {c_col}")
+                elif c_col:
+                    merged_cols.append(c_col)
+                elif p_col:
+                    merged_cols.append(p_col)
+            
+            final_cols = [c for c in merged_cols if c and not c.replace(".", "").isdigit()]
+            if final_cols:
+                return final_cols
+
+        # Fallback single header
+        df_single = pd.read_excel(file_path, sheet_name=sheet_name, header=best_row_idx, nrows=2)
+        return [
+            str(c).strip() 
+            for c in df_single.columns 
+            if str(c).strip() and not str(c).startswith("Unnamed:") and not str(c).replace(".", "").isdigit()
+        ]
+    except Exception as e:
+        print(f"[-] Gagal mengekstrak header kolom pada sheet {sheet_name}: {e}")
+        return []
 
 
 def inspect_and_save_file(
@@ -182,33 +230,19 @@ def inspect_and_save_file(
     sheet_columns = {}
     lower_name = filename.lower()
 
-    if lower_name.endswith((".xlsx", ".xlsm", ".xltx")):
-        wb = openpyxl.load_workbook(saved_path, read_only=True, data_only=True)
-        available_sheets = [
-            {"name": ws.title, "is_hidden": ws.sheet_state in ["hidden", "veryHidden"]}
-            for ws in wb.worksheets
-        ]
-        wb.close()
+    if lower_name.endswith((".xlsx", ".xlsm", ".xltx", ".xls")):
+        try:
+            wb = openpyxl.load_workbook(saved_path, read_only=True, data_only=True)
+            for ws in wb.worksheets:
+                is_hidden = ws.sheet_state in ["hidden", "veryHidden"]
+                available_sheets.append({"name": ws.title, "is_hidden": is_hidden})
+            wb.close()
+        except Exception:
+            excel_obj = pd.ExcelFile(saved_path)
+            available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
 
-        # Baca nama kolom tiap sheet
         for s in available_sheets:
-            try:
-                df_header = pd.read_excel(saved_path, sheet_name=s["name"], nrows=3)
-                cols = [str(c).strip() for c in df_header.columns if str(c).strip() and not str(c).startswith("Unnamed:")]
-                sheet_columns[s["name"]] = cols
-            except Exception:
-                sheet_columns[s["name"]] = []
-
-    elif lower_name.endswith(".xls"):
-        excel_obj = pd.ExcelFile(saved_path, engine="xlrd")
-        available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
-        for s in excel_obj.sheet_names:
-            try:
-                df_header = pd.read_excel(saved_path, sheet_name=s, nrows=3, engine="xlrd")
-                cols = [str(c).strip() for c in df_header.columns if str(c).strip() and not str(c).startswith("Unnamed:")]
-                sheet_columns[s] = cols
-            except Exception:
-                sheet_columns[s] = []
+            sheet_columns[s["name"]] = extract_excel_columns_dynamically(saved_path, s["name"])
 
     elif lower_name.endswith(".csv"):
         available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
@@ -220,14 +254,14 @@ def inspect_and_save_file(
 
     visible_first = next(
         (s["name"] for s in available_sheets if not s["is_hidden"]),
-        available_sheets[0]["name"] if available_sheets else ""
+        available_sheets[0]["name"] if available_sheets else "",
     )
 
     return {
         "file_id": file_id,
         "available_sheets": [s["name"] for s in available_sheets],
         "sheet_details": available_sheets,
-        "sheet_columns": sheet_columns, # <-- Dikirim ke frontend
+        "sheet_columns": sheet_columns,
         "default_sheet": visible_first,
         "saved_path": saved_path,
     }
@@ -236,7 +270,6 @@ def inspect_and_save_file(
 # ==========================================
 # DATABASE CHECKS & DDL EXECUTION
 # ==========================================
-
 
 def check_target_table_in_db(
     file_id: str,
