@@ -174,11 +174,15 @@ class JakreJabarETL:
         df.rename(columns=alias_mapping, inplace=True)
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
-        # Buang baris header duplikat / summary
-        trash_regex = r'^\s*(TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
+        # PERBAIKAN 1: Tambahkan pattern XXX, (TEXT: XXX), dsb ke trash_regex
+        trash_regex = r'^\s*(\(TEXT:\s*XXX\)|TEXT:\s*XXX|XXX|TOTAL|JUMLAH|GRAND|SUBTOTAL|REKAP|SUMMARY|0|NAN|NONE|-)\s*$'
+        
         for col_id in ['policy_number', 'insured_name', 'id_terjamin']:
             if col_id in df.columns:
+                # Buang jika cocok dengan regex trash
                 df = df[~df[col_id].astype(str).str.upper().str.strip().str.match(trash_regex, na=False)]
+                # Buang juga jika isinya mengandung kata "XXX"
+                df = df[~df[col_id].astype(str).str.upper().str.contains('XXX', na=False)]
                 df = df[df[col_id].notna() & (df[col_id].astype(str).str.strip() != "")]
                 break
 
@@ -196,7 +200,7 @@ class JakreJabarETL:
             if col in df.columns:
                 df[col] = df[col].apply(format_id_column)
                 df[col] = df[col].astype(str).str.upper().str.strip()
-                df[col] = df[col].replace(['NAN', 'NONE', 'NULL', '<NA>', 'NAT', ''], np.nan)
+                df[col] = df[col].replace(['NAN', 'NONE', 'NULL', '<NA>', 'NAT', '', '(TEXT: XXX)', 'TEXT: XXX', 'XXX'], np.nan)
 
         num_cols = [
             'sum_insured', 'claim_amount_100', 'our_share_percent', 'our_share_amount',
@@ -207,7 +211,8 @@ class JakreJabarETL:
                 cleaned = df[ncol].astype(str).str.replace(r'[%, ]', '', regex=True).str.strip()
                 df[ncol] = pd.to_numeric(cleaned, errors='coerce').fillna(0.0).round(2)
 
-        # Generate urutan nomor baris pasti
+        # PERBAIKAN 2: Generate 'no' dan reset index SETELAH semua baris kotor dibuang
+        df = df.reset_index(drop=True)
         df['no'] = range(1, len(df) + 1)
 
         if master_cols:
