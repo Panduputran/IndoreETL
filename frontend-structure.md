@@ -1,79 +1,116 @@
-====================================
-Frontend Structure - ETL Workflow UI
-====================================
+# Frontend Architecture & Directory Structure
 
-Dokumentasi arsitektur dan struktur direktori modul frontend untuk **Treaty Management System (ETL Workflow & Bordero Processing)**.
+Dokumentasi arsitektur dan struktur direktori frontend untuk Treaty Management System & Bordero ETL Processing Portal (IndonesiaRe).
 
-Aturan Arsitektur
-=================
+---
 
-* **Feature-Based / Modular Directory**: Kode dikelompokkan berdasarkan domain fitur (misal: `upload-etl`, `history`, `mapping`, `master`, `bordero-cedant`).
-* **State Orchestration**: Komponen `UploadProcess.jsx` bertindak sebagai orchestrator utama wizard 3 fase (Upload -> Mapping -> Preview/Validate).
-* **Multi-Schema Master Support**: Aplikasi mendukung skema IPR terpisah berdasarkan Lini Bisnis (*Class of Business / COB*), yaitu **IPR FIRE / Property Master** (51 atribut fisik/properti) dan **IPR KREDIT / Financial Master** (36-48 atribut keuangan/bank).
-* **Unified COB Data Viewer**: Menu *Bordero Cedant* menyatukan data Premi dan Klaim dalam satu antarmuka berbasis COB dengan pembeda badge visual serta tab filter cepat (*Semua / Premi / Klaim*), menghilangkan rute *redundant* terpisah.
-* **UI Atomicity & Safety**: Komponen visual umum dipisah ke folder `components/ui` (Table, Button, Badge, Modal). Aksi sensitif seperti hapus data pada viewer dilapisi dengan *Confirmation Modal*.
+## Arsitektur & Prinsip Desain
 
-Struktur Direktori
-==================
-   etl-indore-fe/
-├── .env                        # Variabel environment (misal: REACT_APP_API_BASE_URL)
-├── package.json                # Dependensi (react, axios, lucide-react, tailwindcss)
-├── tailwind.config.js          # Konfigurasi Tailwind & JSX parser
-├── vite.config.js              # Konfigurasi *bundler* Vite
+* **Framework & Build Tool:** Menggunakan React 19 bersama Vite untuk performa build dan Hot Module Replacement (HMR) cepat.
+* **Styling System:** Didukung oleh Tailwind CSS v4 untuk styling responsif dan modular.
+* **Feature-Driven Architecture:** Kode dikelompokkan ke dalam direktori modul fitur yang terisolasi (`upload`, `bordero`, `etl`, `mapping`, `sheet-selection`).
+* **Multi-Schema Master Support:** Mendukung pemrosesan dan visualisasi skema IPR terpisah berdasarkan Lini Bisnis (Class of Business / COB):
+  * **IPR FIRE / Property Master:** 51 atribut aset fisik, tarif premi, okupasi, zona risiko gempa bumi (EQ).
+  * **IPR KREDIT / Financial Master:** 36–48 atribut perbankan, plafon kredit, debitur, tenor, LKP, cause of loss.
+* **Unified COB Data Viewer:** Menyatukan visualisasi data Premi dan Klaim dalam satu tampilan tabel interaktif dengan filter tabs (Semua / Premi / Klaim) serta Confirmation Modal untuk proteksi penghapusan data.
+
+---
+
+## Struktur Direktori Frontend
+
+```text
+frontend/
+├── .env                                # Variabel environment (REACT_APP_API_BASE_URL)
+├── .gitignore                          # Aturan abaikan file Git (node_modules, dist, dll)
+├── eslint.config.js                    # Konfigurasi ESLint & linting rules
+├── index.html                          # Root HTML entry point
+├── package.json                        # Definisi dependensi (React, Vite, Axios, Lucide React, Recharts)
+├── postcss.config.js                   # Konfigurasi PostCSS
+├── tailwind.config.js                  # Konfigurasi tema Tailwind CSS
+├── vite.config.js                      # Konfigurasi bundler Vite
+│
 └── src/
-    ├── App.jsx                 # Routing utama aplikasi
-    ├── index.css               # Global styling
-    ├── main.jsx                # Entry point React
+    ├── App.css                         # CSS pendukung
+    ├── App.jsx                         # Router utama aplikasi & deklarasi rute halaman
+    ├── index.css                       # Global styles & konfigurasi Tailwind directive
+    ├── main.jsx                        # Entry point React DOM render
+    │
     ├── api/
-    │   └── borderoApi.js       # Kumpulan fungsi pemanggilan endpoint Axios
-    ├── components/             # UI Components yang *reusable*
+    │   └── borderoApi.js               # Service client Axios untuk integrasi API backend
+    │
+    ├── assets/                         # Asset statis, logo, ikon gambar
+    │
+    ├── components/                     # Komponen UI global yang dapat digunakan kembali (reusable)
     │   ├── common/
-    │   │   └── EmptyState.jsx  # Tampilan saat data kosong
+    │   │   └── EmptyState.jsx          # Tampilan placeholder saat data kosong / belum dimuat
     │   ├── context/
-    │   │   └── SidebarContext.jsx # Manajemen state navigasi sidebar
+    │   │   └── SidebarContext.jsx      # React Context untuk status navigasi sidebar
     │   ├── layout/
-    │   │   ├── MainLayout.jsx  # Wrapper layout utama
-    │   │   └── Sidebar.jsx     # Navigasi menu kiri
-    │   └── ui/                 # Atomic UI (Button, Input, Table)
+    │   │   ├── MainLayout.jsx          # Wrapper layout utama aplikasi (Navbar, Sidebar, Content Area)
+    │   │   └── Sidebar.jsx             # Panel navigasi sisi kiri dengan navigasi rute aktif
+    │   └── ui/                         # Atomic components (Button, Input, Table, Badge, Modal, Card)
+    │
     ├── constants/
-    │   └── data.js             # Master data statis (Daftar Cedant, COB, Periode)
+    │   └── data.js                     # Master data statis (Daftar Cedant, Pilihan COB, Periode Kuartal/Tahun)
+    │
     ├── data/
-    │   └── iprMasterData.js    # Definisi 51 atribut standar skema IPR
-    ├── features/               # Modul terisolasi berdasarkan fungsionalitas
-    │   ├── bordero/            # Fitur pengelolaan dan riwayat bordero
-    │   ├── etl/                # Fitur terminal eksekusi ETL & logs
-    │   ├── mapping/            # Fitur UI untuk *dynamic column mapping*
-    │   ├── sheet-selection/    # Fitur seleksi *sheet* Excel
-    │   └── upload/             # Fitur *drag-and-drop* & *upload widget*
-    ├── pages/                  # Komponen halaman penuh (*Routed Views*)
-    │   ├── Dashboard.jsx       # Ringkasan data & analitik
-    │   ├── FormIpr.jsx         # Referensi Master IPR
-    │   ├── MasterMapping.jsx   # Halaman *self-service mapping*
-    │   ├── UploadBordero.jsx   # Halaman unggah berkas
-    │   ├── UserGuide.jsx       # Dokumentasi & FAQ sistem
+    │   └── iprMasterData.js            # Kamus atribut standar baku skema IPR FIRE dan IPR KREDIT
+    │
+    ├── features/                       # Modul fitur terisolasi
+    │   ├── bordero/                    # Pengelolaan data bordero & riwayat pemrosesan
+    │   │   ├── AdvancedFilter.jsx      # Panel filter multi-kriteria (Cedant, Periode, COB)
+    │   │   ├── HistoryTable.jsx        # Tabel riwayat eksekusi ETL & status log
+    │   │   ├── HistoryView.jsx         # View container riwayat transaksi
+    │   │   └── UploadProcess.jsx       # State Orchestrator alur wizard unggah berkas
+    │   │
+    │   ├── etl/                        # Terminal eksekusi ETL & visualisasi log real-time
+    │   │   └── components/
+    │   │       └── EtlTerminalPage.jsx # Konsol log terminal proses cleansing & ingestion
+    │   │
+    │   ├── mapping/                    # Antarmuka pemetaan kolom dinamis (dynamic column mapping)
+    │   ├── sheet-selection/            # Komponen seleksi lembar kerja (sheet selector) untuk file multi-sheet
+    │   └── upload/                     # Komponen interaktif upload file
+    │       └── components/
+    │           ├── CedantSearch.jsx    # Pencarian cepat & pemilihan nama perusahaan asuransi
+    │           ├── DragDrop.jsx        # Area drag-and-drop file dengan validasi ekstensi
+    │           ├── FileList.jsx        # Daftar file dalam antrean upload
+    │           ├── FileQueueItem.jsx   # Item status unggahan per file
+    │           ├── PeriodSelector.jsx  # Pilihan kuartal (Q1–Q4) dan tahun transaksi
+    │           ├── UploadBox.jsx       # Container utama kotak upload
+    │           └── UploadWidget.jsx    # Widget wizard upload terintegrasi
+    │
+    ├── pages/                          # Halaman tampilan utama (Routed Pages)
+    │   ├── Dashboard.jsx               # Dashboard analitik transaksi, grafik statistik, & metrik utama
+    │   ├── FormIpr.jsx                 # Halaman referensi kamus atribut Master IPR (FIRE & KREDIT)
+    │   ├── MasterMapping.jsx           # Halaman konfigurasi & manajemen pemetaan kolom mandiri
+    │   ├── UploadBordero.jsx           # Halaman utama proses unggah berkas bordero
+    │   ├── UserGuide.jsx               # Dokumentasi panduan pengguna, alur kerja, & FAQ sistem
     │   └── form/
-    │       ├── FormFire.jsx    # Tabel live database COB Fire
-    │       └── FormKredit.jsx  # Tabel live database COB Kredit
+    │       ├── FormFire.jsx            # Live Database Viewer untuk transaksi COB Properti/Fire
+    │       └── FormKredit.jsx          # Live Database Viewer untuk transaksi COB Keuangan/Kredit
+    │
     └── utils/
-        ├── apiClient.js        # Konfigurasi global Axios (Timeout 5 menit)
-        └── fileUtils.js        # *Helper* regex nama file (Tahun, Kuartal, Kategori)
-Alur Proses (Workflow Phases)
-==============================
+        ├── apiClient.js                # Konfigurasi instance Axios global (base URL, timeout, headers)
+        └── fileUtils.js                # Helper regex nama file, parsing ekstensi, formatting ukuran byte
+```
 
-1. **Phase 1: Upload File & Context Selection**
-   * Pengguna memilih berkas mentah / preset file target (seperti *Bordero Premi Kredit Askrida*, *Bordero Claim Kredit Askrida*, *Bordero Tripakarta*, *Bordero ACA*, atau *Bordero Buana I*).
-   * Pengguna mengunggah file Excel/CSV melalui ``UploadWidget``.
-   * Sistem otomatis mengekstrak header berkas dan melakukan verifikasi pencocokan (*auto-match*) terhadap target skema IPR yang sesuai (FIRE vs KREDIT).
-   * Setelah berkas tervalidasi awal, alur langsung berlanjut ke Phase 2 (Preview).
+---
 
-2. **Phase 2: Preview & ETL Execution**
-   * Menampilkan simulasi data hasil ekstraksi & kualifikasi validasi di ``PreviewTable``.
-   * Sistem otomatis memvalidasi kolom *Mandatory* (`*`) dan format tipe data (misal: `DECIMAL (0.01)` / `NUMERIC` pecahan 2 digit desimal untuk nilai pertanggungan/premi/klaim).
-   * Eksekusi tombol **Jalankan ETL** memasukkan seluruh baris transaksi ke Database Utama (*Data IPR Master*).
+## Alur Kerja Pengguna (User Workflow)
 
-3. **Post-ETL Management & COB Viewers**
-   * Data terproses hasil ETL dikelompokkan ke dalam antarmuka viewer sesuai COB:
-     * **Bordero Cedant -> FIRE** (``FormFire.jsx``): Menampilkan transaksi properti/kebakaran (TSI 100%, Premium 100%, Okupasi, Lokasi/EQ Zone, Nilai Klaim) dengan Tab Filter (*Semua / Premi Fire / Klaim Fire*).
-     * **Bordero Cedant -> CREDIT** (``FormKredit.jsx``): Menampilkan transaksi keuangan/pembiayaan bank (Bank Tertanggung, Nama Debitur, Plafond Kredit, Tenor Bulan, LKP/No. Klaim, Cause of Loss & DOL) dengan Tab Filter (*Semua / Premi Kredit / Klaim Kredit*).
-   * Setiap tabel viewer bebas dari kolom urut `NO` yang *redundant* (langsung dimulai dari identitas `No. Polis`), serta dilengkapi *Delete Confirmation Modal* untuk keamanan pengelolaan data.
-   * Template acuan atribut baku dapat dipantau di **IPR Master Schema** (``IprMaster.jsx``) dengan *Dropdown Switcher* (🏢 IPR FIRE vs 💳 IPR KREDIT).
+1. **Upload Berkas & Konteks Transaksi (`UploadBordero.jsx`)**
+   * Pengguna memilih nama Cedant (misal: Askrida, ACA, Tripakarta), Lini Bisnis (FIRE atau KREDIT), serta Periode (Tahun & Kuartal).
+   * Menyeret berkas Excel/CSV ke dalam area `UploadWidget`.
+
+2. **Inspeksi & Auto-Mapping**
+   * Berkas dikirim ke endpoint backend `/api/v1/etl/inspect`.
+   * Sistem mendeteksi header secara otomatis dan mencocokkan kolom mentah terhadap kolom target skema baku IPR.
+   * Pengguna dapat meninjau lembar kerja (sheet) yang aktif dan melakukan penyesuaian pemetaan jika terdapat kolom khusus.
+
+3. **Preview & Eksekusi Pipeline ETL**
+   * Pengguna melihat cuplikan data hasil sanitasi awal (Preview Table) dan validasi kolom wajib (Mandatory fields).
+   * Menekan tombol Jalankan ETL untuk memulai sanitasi vektor NumPy/Pandas dan injeksi batch ke PostgreSQL melalui terminal monitor.
+
+4. **Monitoring & Akses Data (`FormFire.jsx` & `FormKredit.jsx`)**
+   * Hasil data yang telah diproses langsung dapat diakses pada menu Bordero Cedant (Fire/Kredit).
+   * Dilengkapi fitur filter Premi/Klaim, pencarian, paginasi, serta export data.
