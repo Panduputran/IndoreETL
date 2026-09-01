@@ -68,3 +68,71 @@ export async function processBatch(payloadList) {
     throw error;
   }
 }
+
+// ==========================================
+// HISTORY & AUDIT LOG API
+// ==========================================
+
+export async function getHistoryLogs(params = {}) {
+  try {
+    const response = await apiClient.get('/history/logs', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Gagal mengambil history logs:', error);
+    throw error;
+  }
+}
+
+export async function getMappingPresets(params = {}) {
+  try {
+    const response = await apiClient.get('/history/presets', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Gagal mengambil mapping presets:', error);
+    throw error;
+  }
+}
+
+export async function saveMappingPreset(payload) {
+  try {
+    const response = await apiClient.post('/history/presets', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Gagal menyimpan preset mapping:', error);
+    throw error;
+  }
+}
+
+export async function deleteMappingPreset(presetId) {
+  try {
+    const response = await apiClient.delete(`/history/presets/${presetId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Gagal menghapus preset mapping:', error);
+    throw error;
+  }
+}
+
+// ==========================================
+// AUTHENTICATION API
+// ==========================================
+
+export async function loginUser(username, password) {
+  try {
+    const response = await apiClient.post('/auth/login', { username, password });
+    return response.data;
+  } catch (error) {
+    console.error('Gagal login:', error);
+    throw error;
+  }
+}
+
+export async function getCurrentUser() {
+  try {
+    const response = await apiClient.get('/auth/me');
+    return response.data;
+  } catch (error) {
+    console.error('Gagal mengambil data user:', error);
+    throw error;
+  }
+}

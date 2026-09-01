@@ -83,9 +83,11 @@ frontend/
     ├── pages/                          # Halaman tampilan utama (Routed Pages)
     │   ├── Dashboard.jsx               # Dashboard analitik transaksi, grafik statistik, & metrik utama
     │   ├── FormIpr.jsx                 # Halaman referensi kamus atribut Master IPR (FIRE & KREDIT)
+    │   ├── HistoryPage.jsx             # Halaman audit trail riwayat pemrosesan ETL live PostgreSQL
     │   ├── MasterMapping.jsx           # Halaman konfigurasi & manajemen pemetaan kolom mandiri
     │   ├── UploadBordero.jsx           # Halaman utama proses unggah berkas bordero
     │   ├── UserGuide.jsx               # Dokumentasi panduan pengguna, alur kerja, & FAQ sistem
+    │   ├── ValidasiBordero.jsx         # Modul inspeksi validasi & integritas data bordero
     │   └── form/
     │       ├── FormFire.jsx            # Live Database Viewer untuk transaksi COB Properti/Fire
     │       └── FormKredit.jsx          # Live Database Viewer untuk transaksi COB Keuangan/Kredit

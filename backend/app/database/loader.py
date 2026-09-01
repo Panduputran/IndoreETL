@@ -9,6 +9,27 @@ from app.database.connection import engine
 from app.services.inspector_service import sanitize_column_name
 
 
+def make_unique_column_names(cols) -> list:
+    """
+    Memastikan seluruh nama kolom 100% unik dan tidak ada duplikasi
+    yang dapat memicu error 'A column with name X is already present'.
+    """
+    seen = {}
+    unique_cols = []
+    for col in cols:
+        clean_col = re.sub(r"[^a-zA-Z0-9_]", "_", str(col).strip().lower())
+        clean_col = re.sub(r"_+", "_", clean_col).strip("_")
+        if not clean_col:
+            clean_col = "unnamed"
+        if clean_col in seen:
+            seen[clean_col] += 1
+            unique_cols.append(f"{clean_col}_{seen[clean_col]}")
+        else:
+            seen[clean_col] = 1
+            unique_cols.append(clean_col)
+    return unique_cols
+
+
 def load_dataframe_to_postgres(
     df: pd.DataFrame, table_name: str, if_exists: str = "append"
 ) -> int:
@@ -18,12 +39,11 @@ def load_dataframe_to_postgres(
     clean_table = re.sub(r"[^a-zA-Z0-9_]", "", table_name.lower())
 
     df_clean = df.copy()
-    # Format seluruh nama kolom database menjadi snake_case aman
-    df_clean.columns = [
-        re.sub(r"[^a-zA-Z0-9_]", "_", str(col).strip().lower())
-        for col in df_clean.columns
-    ]
+    
+    # 1. Pastikan nama kolom 100% unik & snake_case
+    df_clean.columns = make_unique_column_names(df_clean.columns)
 
+    # 2. Ganti nilai NaN dengan None agar tersimpan sebagai NULL di PostgreSQL
     df_clean = df_clean.where(pd.notnull(df_clean), None)
 
     with engine.begin() as connection:

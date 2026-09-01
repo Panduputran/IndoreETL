@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -56,27 +56,21 @@ class ProcessETLRequest(BaseModel):
     deduplicate: bool = False
 
 
-class NonIprFieldConfig(BaseModel):
-    enabled: bool = True
-    dbField: str
-    sqlType: str
-
-
 class FileMappingPayload(BaseModel):
     file_id: str
-    category: str
-    cob: str
-    period: str
-    received_date: str
-    selected_sheet: str
-    column_mapping: Dict[str, Optional[str]]
-    non_ipr_mapping: Optional[Dict[str, NonIprFieldConfig]] = None
+    category: Optional[str] = "premi"
+    cob: Optional[str] = "fire"
+    period: Optional[str] = ""
+    received_date: Optional[str] = ""
+    selected_sheet: Optional[str] = ""
+    column_mapping: Dict[str, Optional[str]] = {}
+    non_ipr_mapping: Optional[Dict[str, Any]] = None
 
 
 class EtlMappingRequest(BaseModel):
     cedant_code: str
     cedant_name: Optional[str] = None
-    activity_title: str
+    activity_title: Optional[str] = "BATCH-ETL"
     files: List[FileMappingPayload]
 
 
@@ -150,98 +144,132 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
             if not os.path.exists(file_path):
                 raise HTTPException(status_code=404, detail=f"Berkas {file_info.file_id} tidak ditemukan.")
 
-            # 1. Deteksi Baris Header Aktual (Mendukung Header Bertingkat / Merged Header)
-            df_preview = pd.read_excel(file_path, sheet_name=file_info.selected_sheet, header=None, nrows=25)
-            
-            best_row_idx = 0
-            best_score = -1
-            for idx, row in df_preview.iterrows():
-                row_vals = [str(val).strip() for val in row if pd.notnull(val) and str(val).strip() != ""]
-                if not row_vals:
-                    continue
-                text_cells = sum(1 for v in row_vals if not v.replace(".", "").replace(",", "").replace("-", "").replace("/", "").isdigit())
-                keyword_hits = sum(3 for v in row_vals if any(kw in v.lower() for kw in header_keywords))
-                score = text_cells + keyword_hits
-                if score > best_score and text_cells >= 2:
-                    best_score = score
-                    best_row_idx = idx
+            clean_cat = re.sub(r"[^a-zA-Z0-9_]", "", str(file_info.category or "premi").lower())
+            clean_ced = re.sub(r"[^a-zA-Z0-9_]", "", payload.cedant_code.lower())
+            clean_cob = re.sub(r"[^a-zA-Z0-9_]", "", str(file_info.cob or "fire").lower())
+            target_table_name = f"{clean_cat}_{clean_ced}_{clean_cob}"
 
-            # Periksa kemungkinan sub-header di baris berikutnya
-            has_sub_header = False
-            if best_row_idx + 1 < len(df_preview):
-                next_row_vals = [str(val).strip() for val in df_preview.iloc[best_row_idx + 1] if pd.notnull(val) and str(val).strip() != ""]
-                sub_keywords = {"start", "end", "%", "in amount", "amount", "or", "qs", "surplus", "others", "md", "machinery", "stock", "tpl", "bi"}
-                if sum(1 for v in next_row_vals if v.lower() in sub_keywords) >= 2:
-                    has_sub_header = True
+            # 1. Baca data berdasarkan format berkas (CSV vs Excel)
+            is_csv = file_path.lower().endswith(".csv")
 
-            # 2. Baca DataFrame Riil
-            if has_sub_header:
-                df_raw = pd.read_excel(file_path, sheet_name=file_info.selected_sheet, header=[best_row_idx, best_row_idx + 1])
-                flat_cols = []
-                for col_tuple in df_raw.columns:
-                    p_col = str(col_tuple[0]).strip() if not str(col_tuple[0]).startswith("Unnamed:") else ""
-                    c_col = str(col_tuple[1]).strip() if not str(col_tuple[1]).startswith("Unnamed:") else ""
-                    if p_col and c_col and p_col.lower() != c_col.lower():
-                        flat_cols.append(f"{p_col} - {c_col}")
-                    elif c_col:
-                        flat_cols.append(c_col)
-                    elif p_col:
-                        flat_cols.append(p_col)
-                    else:
-                        flat_cols.append(f"unnamed_{len(flat_cols)}")
-                df_raw.columns = flat_cols
+            if is_csv:
+                df_raw = pd.read_csv(file_path)
             else:
-                df_raw = pd.read_excel(file_path, sheet_name=file_info.selected_sheet, header=best_row_idx)
+                # Excel File
+                excel_obj = pd.ExcelFile(file_path)
+                selected_sheet = file_info.selected_sheet
+                if not selected_sheet or selected_sheet not in excel_obj.sheet_names:
+                    selected_sheet = excel_obj.sheet_names[0]
 
-            # 3. Siapkan Kamus Rename Kolom
+                # Deteksi baris header aktual
+                df_preview = pd.read_excel(file_path, sheet_name=selected_sheet, header=None, nrows=25)
+                best_row_idx = 0
+                best_score = -1
+                for idx, row in df_preview.iterrows():
+                    row_vals = [str(val).strip() for val in row if pd.notnull(val) and str(val).strip() != ""]
+                    if not row_vals:
+                        continue
+                    text_cells = sum(1 for v in row_vals if not v.replace(".", "").replace(",", "").replace("-", "").replace("/", "").isdigit())
+                    keyword_hits = sum(3 for v in row_vals if any(kw in v.lower() for kw in header_keywords))
+                    score = text_cells + keyword_hits
+                    if score > best_score and text_cells >= 2:
+                        best_score = score
+                        best_row_idx = idx
+
+                has_sub_header = False
+                if best_row_idx + 1 < len(df_preview):
+                    next_row_vals = [str(val).strip() for val in df_preview.iloc[best_row_idx + 1] if pd.notnull(val) and str(val).strip() != ""]
+                    sub_keywords = {"start", "end", "%", "in amount", "amount", "or", "qs", "surplus", "others", "md", "machinery", "stock", "tpl", "bi"}
+                    if sum(1 for v in next_row_vals if v.lower() in sub_keywords) >= 2:
+                        has_sub_header = True
+
+                if has_sub_header:
+                    df_raw = pd.read_excel(file_path, sheet_name=selected_sheet, header=[best_row_idx, best_row_idx + 1])
+                    flat_cols = []
+                    for col_tuple in df_raw.columns:
+                        p_col = str(col_tuple[0]).strip() if not str(col_tuple[0]).startswith("Unnamed:") else ""
+                        c_col = str(col_tuple[1]).strip() if not str(col_tuple[1]).startswith("Unnamed:") else ""
+                        if p_col and c_col and p_col.lower() != c_col.lower():
+                            flat_cols.append(f"{p_col} - {c_col}")
+                        elif c_col:
+                            flat_cols.append(c_col)
+                        elif p_col:
+                            flat_cols.append(p_col)
+                        else:
+                            flat_cols.append(f"unnamed_{len(flat_cols)}")
+                    df_raw.columns = flat_cols
+                else:
+                    df_raw = pd.read_excel(file_path, sheet_name=selected_sheet, header=best_row_idx)
+
+            # 2. Siapkan Kamus Rename Kolom
             rename_map = {}
             active_non_ipr_columns = []
             
-            # 1. Mapping Standar IPR
-            for target_field, source_col in file_info.column_mapping.items():
+            # Mapping Standar IPR (target_db_field -> source_column)
+            for target_field, source_col in (file_info.column_mapping or {}).items():
                 if source_col and source_col in df_raw.columns:
-                    rename_map[source_col] = target_field
+                    clean_target = re.sub(r"[^a-zA-Z0-9_]", "_", target_field.strip().lower())
+                    rename_map[source_col] = clean_target
 
-            # 2. Mapping Kolom Non-IPR (Hanya yang enabled == True)
+            # Mapping Kolom Non-IPR (Hanya yang enabled == True)
             if file_info.non_ipr_mapping:
                 for source_col, cfg in file_info.non_ipr_mapping.items():
-                    is_enabled = cfg.enabled if hasattr(cfg, "enabled") else cfg.get("enabled", True)
+                    if isinstance(cfg, dict):
+                        is_enabled = cfg.get("enabled", True)
+                        target_db_name = cfg.get("dbField", source_col)
+                    else:
+                        is_enabled = getattr(cfg, "enabled", True)
+                        target_db_name = getattr(cfg, "dbField", source_col)
+
+                    clean_non_ipr = re.sub(r"[^a-zA-Z0-9_]", "_", str(target_db_name).strip().lower())
                     if is_enabled and source_col in df_raw.columns and source_col not in rename_map:
-                        target_db_name = cfg.dbField if hasattr(cfg, "dbField") else cfg.get("dbField", source_col)
-                        rename_map[source_col] = target_db_name
-                        active_non_ipr_columns.append({"source": source_col, "target": target_db_name})
+                        rename_map[source_col] = clean_non_ipr
+                        active_non_ipr_columns.append({"source": source_col, "target": clean_non_ipr})
 
-            df_transformed = df_raw.rename(columns=rename_map)
+            # Terapkan rename secara aman dengan penanganan kolom duplikat
+            seen_targets = {}
+            new_col_names = []
+            for col in df_raw.columns:
+                if col in rename_map:
+                    tgt = rename_map[col]
+                    if tgt in seen_targets:
+                        seen_targets[tgt] += 1
+                        new_col_names.append(f"{tgt}_{seen_targets[tgt]}")
+                    else:
+                        seen_targets[tgt] = 1
+                        new_col_names.append(tgt)
+                else:
+                    new_col_names.append(f"__drop__{col}")
 
-            # Buang kolom non-IPR yang dinonaktifkan (unmapped columns)
-            keep_columns = list(rename_map.values())
-            df_transformed = df_transformed[[c for c in df_transformed.columns if c in keep_columns]]
+            df_raw.columns = new_col_names
+            keep_cols = [c for c in new_col_names if not c.startswith("__drop__")]
+            df_transformed = df_raw[keep_cols].copy() if keep_cols else df_raw.copy()
 
             # 3. Format Periode & Cedant Name
             raw_period = str(file_info.period or "").strip()
             raw_year = str(file_info.received_date or "").strip()
             full_period = f"{raw_period.upper()} {raw_year}".strip() if (raw_year and raw_year not in raw_period) else raw_period.upper().strip()
 
+            # Hapus kolom period/cedant_name jika sudah ada agar tidak memicu duplikasi
+            for reserved_col in ["period", "cedant_name"]:
+                if reserved_col in df_transformed.columns:
+                    df_transformed.drop(columns=[reserved_col], inplace=True)
+
             df_transformed["period"] = full_period
             df_transformed["cedant_name"] = cedant_label
-
-            clean_cat = re.sub(r"[^a-zA-Z0-9_]", "", file_info.category.lower())
-            clean_ced = re.sub(r"[^a-zA-Z0-9_]", "", payload.cedant_code.lower())
-            clean_cob = re.sub(r"[^a-zA-Z0-9_]", "", file_info.cob.lower())
-            target_table_name = f"{clean_cat}_{clean_ced}_{clean_cob}"
 
             rows_loaded = load_dataframe_to_postgres(df_transformed, target_table_name)
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # Catat aktivitas ke tabel etl_activity_log
+            # 4. Catat aktivitas ke tabel etl_activity_log di PostgreSQL
             try:
                 file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
                 with SessionLocal() as db_session:
                     log_entry = EtlActivityLog(
                         cedant_code=payload.cedant_code.lower(),
                         cedant_name=cedant_label,
-                        cob=file_info.cob.upper(),
-                        category=file_info.category.lower(),
+                        cob=file_info.cob.upper() if file_info.cob else "FIRE",
+                        category=clean_cat,
                         target_table=target_table_name,
                         period=full_period,
                         file_name=file_info.file_id,
@@ -260,7 +288,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 "table_name": target_table_name,
                 "total_rows_loaded": rows_loaded,
                 "total_columns": len(df_transformed.columns),
-                "ipr_mapped_count": len([k for k, v in file_info.column_mapping.items() if v]),
+                "ipr_mapped_count": len([k for k, v in (file_info.column_mapping or {}).items() if v]),
                 "non_ipr_added_count": len(active_non_ipr_columns),
                 "period": full_period,
                 "cedant_name": cedant_label,
@@ -271,6 +299,25 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
     except HTTPException:
         raise
     except Exception as e:
+        # Catat kegagalan ke etl_activity_log
+        try:
+            with SessionLocal() as db_session:
+                err_entry = EtlActivityLog(
+                    cedant_code=payload.cedant_code.lower(),
+                    cedant_name=str(payload.cedant_name or payload.cedant_code).upper().strip(),
+                    cob="FIRE",
+                    category="premi",
+                    target_table="error_log",
+                    period="",
+                    file_name="",
+                    rows_inserted=0,
+                    status="failed",
+                    error_message=str(e),
+                )
+                db_session.add(err_entry)
+                db_session.commit()
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"Gagal memproses ETL mapping: {str(e)}")
 
 
