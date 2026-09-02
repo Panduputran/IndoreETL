@@ -250,7 +250,40 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 cedant_label=cedant_label
             )
 
-            # 4. Execution Fast Bulk Loading ke Database PostgreSQL
+            # 4. Format Periode & Cedant Name
+            raw_period = str(file_info.period or "").strip()
+            raw_year = str(file_info.received_date or "").strip()
+            full_period = f"{raw_period.upper()} {raw_year}".strip() if (raw_year and raw_year not in raw_period) else raw_period.upper().strip()
+
+            for reserved_col in ["period", "cedant_name"]:
+                if reserved_col in df_transformed.columns:
+                    df_transformed.drop(columns=[reserved_col], inplace=True)
+
+            df_transformed["period"] = full_period
+            df_transformed["cedant_name"] = cedant_label
+            df_transformed.columns = make_unique_column_names(df_transformed.columns)
+
+            # 5. Hapus Baris Kosong / Total Invalid
+            if not df_transformed.empty:
+                mapped_db_cols = [k for k, v in (file_info.column_mapping or {}).items() if v and k in df_transformed.columns]
+                if not mapped_db_cols:
+                    mapped_db_cols = [c for c in df_transformed.columns if c not in ["period", "cedant_name"]]
+
+                if mapped_db_cols:
+                    valid_mask = df_transformed[mapped_db_cols].apply(
+                        lambda row: any(
+                            pd.notna(val) and str(val).strip().lower() not in ['', 'nan', 'none', 'null', '<na>', 'total', 'jumlah']
+                            for val in row
+                        ),
+                        axis=1
+                    )
+                    df_transformed = df_transformed[valid_mask].copy()
+
+                df_transformed.reset_index(drop=True, inplace=True)
+
+            # 6. Execution Load ke Database
+            chunk_size = 5000
+
             total_rows_loaded = 0
             if not df_transformed.empty:
                 loaded = load_dataframe_to_postgres(df_transformed, target_table_name)
