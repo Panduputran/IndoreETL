@@ -1,10 +1,10 @@
-# backend/app/services/inspector_service.py
 import io
 import os
 import re
 import uuid
 import openpyxl
 import pandas as pd
+from python_calamine import CalamineWorkbook
 from sqlalchemy import inspect, text
 
 from app.core.config import (
@@ -57,7 +57,7 @@ def infer_sql_type_dynamically(col_name: str, sample_series: pd.Series = None) -
     is_money = any(mk in col_clean for mk in money_keywords)
     is_text = any(
         tx in col_clean
-        for tx in ["event", "cause", "desc", "note", "type", "name", "occupation"]
+        for tx in ["event", "cause", "desc", "note", "type", "name", "occupation", "policy", "polis", "number"]
     )
 
     if is_money and not is_text:
@@ -79,9 +79,7 @@ def resolve_cob_from_sheet(sheet_name: str) -> str:
     clean_name = re.sub(r"\s+", " ", clean_name).strip()
 
     fire_keywords = ["fire", "kebakaran", "non marine", "nonmarine", "property"]
-    if any(k in clean_name for k in fire_keywords) or any(
-        k in raw_str for k in fire_keywords
-    ):
+    if any(k in clean_name for k in fire_keywords) or any(k in raw_str for k in fire_keywords):
         return "fire"
 
     if clean_name in SHEET_TO_TABLE_MAPPING:
@@ -125,14 +123,11 @@ def get_target_table_name(
     clean_tipe = tipe_proses.lower().strip().replace(" ", "_")
     clean_cedant = cedant.lower().strip().replace(" ", "_")
 
-    if "askrida" in clean_cedant:
-        if clean_tipe == "claim":
-            if cob_suffix == "credit":
-                cob_suffix = "kredit"
-        else:
-            if cob_suffix == "kredit":
-                cob_suffix = "credit"
-        return f"{clean_tipe}_{cob_suffix}_{clean_cedant}"
+    # STRICT OVERRIDES UNTUK CEDANT KHUSUS
+    if any(fc in clean_cedant for fc in ["aca", "buana", "buanaindependent", "tripakarta"]):
+        cob_suffix = "fire"
+    elif any(cc in clean_cedant for cc in ["jakre", "jakrejabar", "jamkrida", "jamkridajabar"]):
+        cob_suffix = "credit"
 
     if cob_suffix == "kredit":
         cob_suffix = "credit"
@@ -147,7 +142,7 @@ def get_target_table_name(
 def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
     """
     Mendeteksi baris header bertingkat (parent-child / multi-level headers) 
-    dan menggabungkannya menjadi satu format kolom terstandarisasi.
+    secara instan tanpa membaca seluruh isi file.
     """
     try:
         df_raw = pd.read_excel(file_path, sheet_name=sheet_name, header=None, nrows=25)
@@ -162,7 +157,6 @@ def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
             "dol", "spreading", "incurred", "outstanding", "paid", "reinsurer"
         }
 
-        # 1. Cari baris utama yang memiliki indikasi header terkuat
         best_row_idx = 0
         best_score = -1
         for idx, row in df_raw.iterrows():
@@ -178,7 +172,6 @@ def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
                 best_score = score
                 best_row_idx = idx
 
-        # 2. Periksa apakah baris tepat di bawahnya merupakan sub-header (header bertingkat)
         has_sub_header = False
         if best_row_idx + 1 < len(df_raw):
             next_row_vals = [str(val).strip() for val in df_raw.iloc[best_row_idx + 1] if pd.notnull(val) and str(val).strip() != ""]
@@ -187,7 +180,6 @@ def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
             if sub_hits >= 2:
                 has_sub_header = True
 
-        # 3. Baca dan gabungkan header
         if has_sub_header:
             df_multi = pd.read_excel(file_path, sheet_name=sheet_name, header=[best_row_idx, best_row_idx + 1], nrows=2)
             merged_cols = []
@@ -206,7 +198,6 @@ def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
             if final_cols:
                 return final_cols
 
-        # Fallback single header
         df_single = pd.read_excel(file_path, sheet_name=sheet_name, header=best_row_idx, nrows=2)
         return [
             str(c).strip() 
@@ -221,36 +212,63 @@ def extract_excel_columns_dynamically(file_path: str, sheet_name: str) -> list:
 def inspect_and_save_file(
     file_bytes: bytes, filename: str, tipe_proses: str = None, cedant: str = None
 ) -> dict:
+    """
+    Memindai berkas Excel/CSV secara instan menggunakan Calamine Engine (Rust)
+    Super instan untuk file berukuran besar (18MB+).
+    """
     file_id = f"file_{uuid.uuid4().hex}"
     saved_path = os.path.join(TEMP_UPLOAD_DIR, f"{file_id}_{filename}")
+    
     with open(saved_path, "wb") as f:
         f.write(file_bytes)
 
     available_sheets = []
     sheet_columns = {}
+    sheet_previews = {}
     lower_name = filename.lower()
 
-    if lower_name.endswith((".xlsx", ".xlsm", ".xltx", ".xls")):
-        try:
-            wb = openpyxl.load_workbook(saved_path, read_only=True, data_only=True)
-            for ws in wb.worksheets:
-                is_hidden = ws.sheet_state in ["hidden", "veryHidden"]
-                available_sheets.append({"name": ws.title, "is_hidden": is_hidden})
-            wb.close()
-        except Exception:
-            excel_obj = pd.ExcelFile(saved_path)
-            available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
-
-        for s in available_sheets:
-            sheet_columns[s["name"]] = extract_excel_columns_dynamically(saved_path, s["name"])
-
-    elif lower_name.endswith(".csv"):
+    # 1. BILA FILE CSV
+    if lower_name.endswith(".csv"):
         available_sheets = [{"name": "CSV_DATA", "is_hidden": False}]
         try:
-            df_header = pd.read_csv(saved_path, nrows=3)
+            df_header = pd.read_csv(saved_path, nrows=10)
             sheet_columns["CSV_DATA"] = [str(c).strip() for c in df_header.columns]
+            sheet_previews["CSV_DATA"] = df_header.fillna("").astype(str).values.tolist()
         except Exception:
             sheet_columns["CSV_DATA"] = []
+            sheet_previews["CSV_DATA"] = []
+
+    # 2. BILA FILE EXCEL (.xlsx, .xls, .xlsb) -> PAKAI CALAMINE ENGINE
+    else:
+        try:
+            workbook = CalamineWorkbook.from_path(saved_path)
+            raw_sheets = workbook.sheet_names
+            available_sheets = [{"name": s, "is_hidden": False} for s in raw_sheets]
+
+            for s in raw_sheets:
+                sheet_data = workbook.get_sheet_by_name(s).to_python()
+                preview_rows = sheet_data[:10] if sheet_data else []
+                sheet_previews[s] = [
+                    [str(cell).strip() if cell is not None else "" for cell in row]
+                    for row in preview_rows
+                ]
+                # Ekstrak header dinamis
+                sheet_columns[s] = extract_excel_columns_dynamically(saved_path, s)
+
+        except Exception as cal_err:
+            print(f"[WARN] Calamine fallback to openpyxl: {cal_err}")
+            try:
+                wb = openpyxl.load_workbook(saved_path, read_only=True, data_only=True)
+                for ws in wb.worksheets:
+                    is_hidden = ws.sheet_state in ["hidden", "veryHidden"]
+                    available_sheets.append({"name": ws.title, "is_hidden": is_hidden})
+                wb.close()
+            except Exception:
+                excel_obj = pd.ExcelFile(saved_path)
+                available_sheets = [{"name": s, "is_hidden": False} for s in excel_obj.sheet_names]
+
+            for s in available_sheets:
+                sheet_columns[s["name"]] = extract_excel_columns_dynamically(saved_path, s["name"])
 
     visible_first = next(
         (s["name"] for s in available_sheets if not s["is_hidden"]),
@@ -262,6 +280,7 @@ def inspect_and_save_file(
         "available_sheets": [s["name"] for s in available_sheets],
         "sheet_details": available_sheets,
         "sheet_columns": sheet_columns,
+        "sheet_previews": sheet_previews,
         "default_sheet": visible_first,
         "saved_path": saved_path,
     }

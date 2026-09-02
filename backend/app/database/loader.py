@@ -1,10 +1,11 @@
-import io
 import csv
-import re
+import io
 import math
-import pandas as pd
+import re
 import numpy as np
-from sqlalchemy import text, inspect
+import pandas as pd
+from sqlalchemy import inspect, text
+
 from app.database.connection import engine
 from app.services.inspector_service import sanitize_column_name
 
@@ -117,16 +118,26 @@ def force_clean_timestamp(val):
 
 def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     """
-    Menentukan tipe data DDL PostgreSQL secara akurat tanpa terganggu
-    substring seperti 'sendiri' yang memicu 'end'.
+    Menentukan tipe data DDL PostgreSQL secara akurat.
+    Nomor Polis/Klaim DIKUNCI MATI sebagai TEXT.
     """
     col_lower = str(col_name).lower().strip()
 
-    # 1. Nomor urut / ID murni -> BIGINT
-    if col_lower in {"no", "id", "seq", "id_seq", "no_urut", "number"}:
+    # 1. PRIORITAS UTAMA: Kata kunci yang PASTI TEXT (Polis, Klaim, Ref, Name, dll)
+    text_keywords = [
+        "type", "name", "desc", "note", "event", "cause", "code", 
+        "info", "class", "status", "polis", "policy", "claim_no", 
+        "no_klaim", "reinsured", "cedant", "ref", "reff", "period",
+        "number", "no_polis", "policy_no", "certificate", "sertifikat"
+    ]
+    if any(tk in col_lower for tk in text_keywords):
+        return "TEXT"
+
+    # 2. Nomor urut / ID murni -> BIGINT
+    if col_lower in {"no", "id", "seq", "id_seq", "no_urut"}:
         return "BIGINT"
 
-    # 2. PRIORITAS UTAMA: Kata kunci penanda kolom angka / numerik / keuangan / retensi
+    # 3. Kata kunci penanda kolom angka / numerik / keuangan / retensi
     numeric_keywords = [
         "tsi", "premi", "premium", "claim", "amount", "share", 
         "comm", "komisi", "netto", "gross", "incurred", "loss", 
@@ -135,19 +146,11 @@ def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
         "retensi", "sendiri"
     ]
 
-    # Kata kunci yang PASTI teks
-    text_keywords = [
-        "type", "name", "desc", "note", "event", "cause", "code", 
-        "info", "class", "status", "no_polis", "policy_no", "claim_no", 
-        "no_klaim", "reinsured", "cedant", "ref", "reff", "period"
-    ]
-
-    # Check 1: Deteksi Berdasarkan Kata Kunci Numerik
-    is_numeric_name = any(nk in col_lower for nk in numeric_keywords) and not any(tk in col_lower for tk in text_keywords)
+    is_numeric_name = any(nk in col_lower for nk in numeric_keywords)
     if is_numeric_name:
         return "NUMERIC(20, 2)"
 
-    # 3. PRIORITAS KEDUA: Kolom Tanggal / Timestamp Khusus
+    # 4. Kolom Tanggal / Timestamp Khusus
     # Menggunakan regex Word Boundary (\b) agar kata 'sendiri' TIDAK COCOK dengan 'end'
     is_date_col = False
     if col_lower not in {"period", "cedant_name"}:
@@ -159,7 +162,7 @@ def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     if is_date_col:
         return "TIMESTAMP"
 
-    # Check 2: Auto-Detect dari Sampel Isi Data
+    # 5. Auto-Detect dari Sampel Isi Data
     if sample_series is not None and not sample_series.dropna().empty:
         non_null_samples = sample_series.dropna().astype(str).str.strip()
         valid_samples = non_null_samples[~non_null_samples.str.lower().isin(["", "nan", "none", "null", "<na>", "-", "nil"])]
@@ -192,7 +195,8 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 
     text_or_date_keywords = [
         "type", "name", "desc", "note", "event", "cause", "code", 
-        "info", "class_of_business", "date", "tgl", "time", "period"
+        "info", "class_of_business", "date", "tgl", "time", "period",
+        "policy", "polis", "claim_no", "no_klaim", "number", "certificate"
     ]
 
     numeric_indices = set()
@@ -200,14 +204,15 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 
     for idx, col in enumerate(keys):
         c_lower = str(col).lower().strip()
-        # Identifikasi kolom numerik
+        # Identifikasi kolom numerik (abaikan jika ada kata penanda teks)
         if any(mk in c_lower for mk in money_keywords) and not any(
             tx in c_lower for tx in text_or_date_keywords
         ):
             numeric_indices.add(idx)
         # Identifikasi kolom tanggal/timestamp
         elif any(dk in c_lower for dk in ["date", "tgl", "time", "dol"]) or re.search(r"\b(start|end|dt)\b", c_lower):
-            date_indices.add(idx)
+            if not any(tx in c_lower for tx in ["policy", "polis", "number"]):
+                date_indices.add(idx)
 
     s_buf = io.StringIO()
     csv_writer = csv.writer(

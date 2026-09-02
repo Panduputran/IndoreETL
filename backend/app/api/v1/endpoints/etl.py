@@ -330,7 +330,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 df_transformed.reset_index(drop=True, inplace=True)
 
             # 6. Execution Load ke Database
-            chunk_size = 200
+            chunk_size = 5000
             total_rows_loaded = 0
             
             if not df_transformed.empty:

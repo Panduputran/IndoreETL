@@ -1,25 +1,43 @@
 import os
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD')
-DB_HOST = os.getenv('DB_HOST')
-DB_PORT = os.getenv('DB_PORT')
-DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER', 'postgres')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'postgres')
 
 def get_database_url() -> str:
-    """Mengembalikan URL koneksi database PostgreSQL"""
-    return f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+    """
+    Mengembalikan URL koneksi database PostgreSQL.
+    Menggunakan quote_plus untuk mengantisipasi karakter khusus pada password.
+    """
+    safe_password = quote_plus(DB_PASSWORD) if DB_PASSWORD else ""
+    return f'postgresql://{DB_USER}:{safe_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
 def get_db_engine():
-    """Fungsi untuk membuat koneksi engine ke PostgreSQL"""
+    """
+    Fungsi untuk membuat koneksi engine ke PostgreSQL.
+    Dilengkapi pool_size & max_overflow untuk menangani beban ETL skala besar.
+    """
     try:
         uri = get_database_url()
-        engine = create_engine(uri, pool_pre_ping=True)
+        engine = create_engine(
+            uri,
+            echo=False,                # Pastikan False agar log SQL tidak memenuhi konsol & memperlambat RAM/CPU
+            pool_pre_ping=True,        # Cek apakah koneksi masih hidup sebelum eksekusi query
+            pool_size=15,              # Jumlah koneksi standby di pool
+            max_overflow=25,           # Koneksi ekstra yang diizinkan saat lonjakan beban ETL
+            pool_recycle=1800,         # Daur ulang koneksi setiap 30 menit agar tidak stale
+            connect_args={
+                "options": "-c statement_timeout=600000" # Timeout query di sisi Postgres (10 menit)
+            }
+        )
         return engine
     except Exception as e:
         print(f"[-] Gagal membuat koneksi database: {e}")
