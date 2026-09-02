@@ -36,7 +36,7 @@ backend/
     │       └── endpoints/
     │           ├── etl.py              # Endpoint inti pemrosesan ETL (/inspect, /create-table, /process-with-mapping)
     │           ├── history.py          # Endpoint riwayat audit ETL (/logs) & manajemen preset (/presets)
-    │           ├── tables.py           # Endpoint query tabel resmi ({kategori}_{cedant}_{cob}) & dashboard sub-ms
+    │           ├── tables.py           # Endpoint query tabel resmi ({kategori}_{cedant}_{cob}), dashboard sub-ms, & Dev Drop Table endpoints (/dev/all-physical, /{table_name})
     │           └── user.py             # Endpoint autentikasi lokal & SSO (/login, /sso, /me, /register, /list)
     │
     ├── core/

@@ -426,6 +426,131 @@ def list_available_tables(cob: str = Query("ALL")):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==============================================================================
+# DEVELOPMENT & TESTING TABLE MANAGEMENT ENDPOINTS
+# ==============================================================================
+
+@router.get("/dev/all-physical")
+def get_all_dev_physical_tables():
+    """
+    Mengambil daftar seluruh tabel fisik bordero di PostgreSQL (premi_% dan claim_%)
+    beserta jumlah baris, ukuran tabel di disk, dan klasifikasi cedant/cob untuk testing.
+    """
+    try:
+        with engine.connect() as conn:
+            q = text("""
+                SELECT 
+                    t.table_name,
+                    COALESCE(s.n_live_tup, 0) as row_count,
+                    pg_total_relation_size(quote_ident(t.table_name)) as size_bytes,
+                    pg_size_pretty(pg_total_relation_size(quote_ident(t.table_name))) as size_pretty
+                FROM information_schema.tables t
+                LEFT JOIN pg_stat_user_tables s ON s.relname = t.table_name
+                WHERE t.table_schema = 'public' 
+                  AND (t.table_name LIKE 'premi_%' OR t.table_name LIKE 'claim_%')
+                ORDER BY t.table_name ASC;
+            """)
+            rows = conn.execute(q).fetchall()
+            
+            result = []
+            for r in rows:
+                tname = r[0]
+                row_count = int(r[1])
+                size_bytes = int(r[2]) if r[2] else 0
+                size_pretty = str(r[3]) if r[3] else "0 bytes"
+                
+                is_premi = tname.lower().startswith("premi_")
+                is_credit = ("credit" in tname.lower() or "kredit" in tname.lower())
+                cob_label = "CREDIT" if is_credit else "FIRE"
+                category_label = "PREMIUM" if is_premi else "KLAIM"
+                cedant_label = extract_cedant_from_tablename(tname)
+                
+                result.append({
+                    "table_name": tname,
+                    "row_count": row_count,
+                    "size_bytes": size_bytes,
+                    "size_pretty": size_pretty,
+                    "cob": cob_label,
+                    "category": category_label,
+                    "cedant": cedant_label,
+                    "is_official": is_official_bordero_table(tname)
+                })
+            
+            return {
+                "status": "success",
+                "total_tables": len(result),
+                "tables": result
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mengambil daftar tabel: {str(e)}")
+
+
+@router.delete("/dev/drop-all-physical")
+def drop_all_dev_physical_tables():
+    """
+    Menghapus seluruh tabel fisik bordero (premi_% dan claim_%) sekaligus untuk reset testing.
+    """
+    try:
+        with engine.connect() as conn:
+            q = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                  AND (table_name LIKE 'premi_%' OR table_name LIKE 'claim_%');
+            """)
+            tables_to_drop = [r[0] for r in conn.execute(q).fetchall()]
+            
+        dropped = []
+        with engine.begin() as conn:
+            for t in tables_to_drop:
+                clean_t = re.sub(r"[^a-zA-Z0-9_]", "", t.lower().strip())
+                if clean_t.startswith("premi_") or clean_t.startswith("claim_"):
+                    conn.execute(text(f'DROP TABLE IF EXISTS public."{clean_t}" CASCADE;'))
+                    dropped.append(clean_t)
+                    
+        return {
+            "status": "success",
+            "message": f"Berhasil menghapus {len(dropped)} tabel fisik bordero.",
+            "dropped_tables": dropped
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menghapus seluruh tabel: {str(e)}")
+
+
+@router.delete("/{table_name}")
+def drop_physical_table(table_name: str):
+    """
+    Menghapus (DROP TABLE) tabel fisik bordero di PostgreSQL untuk keperluan testing/development.
+    Hanya mengizinkan penghapusan tabel fisik premi_% atau claim_%.
+    """
+    clean_table = re.sub(r"[^a-zA-Z0-9_]", "", table_name.lower().strip())
+    
+    # Proteksi keamanan: hanya izinkan tabel bordero
+    if not (clean_table.startswith("premi_") or clean_table.startswith("claim_")):
+        raise HTTPException(
+            status_code=400, 
+            detail="Hanya tabel bordero fisik (premi_* atau claim_*) yang diizinkan untuk dihapus."
+        )
+        
+    system_protected = {"app_users", "alembic_version", "etl_activity_log", "mapping_presets"}
+    if clean_table in system_protected:
+        raise HTTPException(
+            status_code=403, 
+            detail="Tabel sistem dilindungi dan tidak dapat dihapus."
+        )
+        
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS public."{clean_table}" CASCADE;'))
+        return {
+            "status": "success",
+            "message": f"Tabel '{clean_table}' berhasil dihapus dari database.",
+            "dropped_table": clean_table
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menghapus tabel: {str(e)}")
+
+
 @router.get("/{table_name}/periods")
 def get_table_periods(table_name: str):
     """

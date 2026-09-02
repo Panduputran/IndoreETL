@@ -1,13 +1,14 @@
 import os
 import re
 import time
+import json
 from typing import Any, Dict, List, Optional
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from app.core.config import SHEET_TO_TABLE_MAPPING
 from app.database.connection import SessionLocal
-from app.database.loader import insert_data_to_db, load_dataframe_to_postgres
+from app.database.loader import insert_data_to_db, load_dataframe_to_postgres, make_unique_column_names
 from app.models.etl_log import EtlActivityLog
 from app.models.mapping_preset import MappingPreset
 from app.services.etl_factory import run_etl_service
@@ -226,17 +227,62 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 else:
                     df_raw = pd.read_excel(file_path, sheet_name=selected_sheet, header=best_row_idx)
 
-            # 3. Siapkan Kamus Rename Kolom
-            rename_map = {}
-            active_non_ipr_columns = []
+            # 3. Bangun DataFrame Terstandarisasi dengan Seluruh Kolom IPR (Lengkap + NULL jika unmapped)
+            is_claim_op = ("claim" in clean_cat) or ("klaim" in clean_cat)
+            is_credit_op = ("credit" in clean_cob) or ("kredit" in clean_cob)
+            schema_key = f"{'CREDIT' if is_credit_op else 'FIRE'}_{'CLAIM' if is_claim_op else 'PREMIUM'}"
             
-            # Mapping Standar IPR
-            for target_field, source_col in (file_info.column_mapping or {}).items():
-                if source_col and source_col in df_raw.columns:
-                    clean_target = re.sub(r"[^a-zA-Z0-9_]", "_", target_field.strip().lower())
-                    rename_map[source_col] = clean_target
+            canonical_ipr_schemas = {
+                "FIRE_PREMIUM": [
+                    "no", "cob", "policy_number", "certificate_number", "insured_name", "insured_affiliation",
+                    "period_start", "period_end", "uw_year", "coverage", "policy_type", "currency",
+                    "si_md_building", "si_machinery", "si_stock", "si_tpl", "si_bi", "si_others",
+                    "tsi_100_percent", "basis_of_indemnity", "pml_amount", "pml_percentage", "eq_zone",
+                    "occupation_code", "occupation", "location", "zip_code", "latitude", "longitude",
+                    "construction_class", "source_business", "is_endorsement", "endorsement_effective_date",
+                    "endorsement_description", "cedant_share_percent", "cedant_share_amount",
+                    "total_coinsurance_panels", "risk_or", "risk_qs", "risk_surplus", "risk_others",
+                    "premium_100_percent", "premium_gross_rate", "discount", "first_loss_scale",
+                    "premium_net_rate", "ceded_premium_100", "indonesia_re_share_premium",
+                    "special_acceptance", "special_acceptance_desc", "note"
+                ],
+                "FIRE_CLAIM": [
+                    "no", "cob", "claim_ref_number", "policy_number", "certificate_number",
+                    "reff_bordereaux_premium", "insured_name", "period_start", "period_end", "uw_year",
+                    "occupation_code", "occupation", "location", "zip_code", "latitude", "longitude",
+                    "date_of_loss", "settled_date", "proximate_cause", "cause_of_loss", "coverage_affected",
+                    "currency", "claim_md_building", "claim_machinery", "claim_stock", "claim_tpl",
+                    "claim_bi", "claim_other", "claim_adjuster_fee", "total_incurred_claim_100",
+                    "cedant_share_percent", "cedant_share_amount", "claim_or", "claim_qs", "claim_surplus",
+                    "claim_others", "type_of_loss", "paid_claims_reinsurer_share",
+                    "outstanding_claims_reinsurer_share", "paid_claims_indonesia_re_share",
+                    "outstanding_claims_indonesia_re_share", "note"
+                ],
+                "CREDIT_PREMIUM": [
+                    "no", "policy_number", "insured_name", "date_of_birth", "tsi_100_percent",
+                    "period_start", "period_end", "tenor_months", "premium_100_percent",
+                    "indonesia_re_share_premium", "note"
+                ],
+                "CREDIT_CLAIM": [
+                    "no", "claim_ref_number", "policy_number", "insured_name", "date_of_loss",
+                    "cause_of_loss", "total_incurred_claim_100", "paid_claims_indonesia_re_share", "note"
+                ]
+            }
+            canonical_cols = canonical_ipr_schemas.get(schema_key, canonical_ipr_schemas["FIRE_PREMIUM"])
 
-            # Mapping Kolom Non-IPR
+            df_transformed = pd.DataFrame(index=df_raw.index)
+
+            # A. Isi seluruh kolom IPR (data dari Excel jika di-mapping, atau NULL jika unmapped)
+            user_mapping = file_info.column_mapping or {}
+            for ipr_col in canonical_cols:
+                src_col = user_mapping.get(ipr_col)
+                if src_col and src_col in df_raw.columns:
+                    df_transformed[ipr_col] = df_raw[src_col]
+                else:
+                    df_transformed[ipr_col] = None
+
+            # B. Tambahkan kolom Non-IPR kustom yang diaktifkan
+            active_non_ipr_columns = []
             if file_info.non_ipr_mapping:
                 for source_col, cfg in file_info.non_ipr_mapping.items():
                     if isinstance(cfg, dict):
@@ -247,28 +293,10 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                         target_db_name = getattr(cfg, "dbField", source_col)
 
                     clean_non_ipr = re.sub(r"[^a-zA-Z0-9_]", "_", str(target_db_name).strip().lower())
-                    if is_enabled and source_col in df_raw.columns and source_col not in rename_map:
-                        rename_map[source_col] = clean_non_ipr
+                    clean_non_ipr = re.sub(r"_+", "_", clean_non_ipr).strip("_")
+                    if is_enabled and source_col in df_raw.columns and clean_non_ipr not in df_transformed.columns:
+                        df_transformed[clean_non_ipr] = df_raw[source_col]
                         active_non_ipr_columns.append({"source": source_col, "target": clean_non_ipr})
-
-            # Rename kolom secara aman
-            seen_targets = {}
-            new_col_names = []
-            for col in df_raw.columns:
-                if col in rename_map:
-                    tgt = rename_map[col]
-                    if tgt in seen_targets:
-                        seen_targets[tgt] += 1
-                        new_col_names.append(f"{tgt}_{seen_targets[tgt]}")
-                    else:
-                        seen_targets[tgt] = 1
-                        new_col_names.append(tgt)
-                else:
-                    new_col_names.append(f"__drop__{col}")
-
-            df_raw.columns = new_col_names
-            keep_cols = [c for c in new_col_names if not c.startswith("__drop__")]
-            df_transformed = df_raw[keep_cols].copy() if keep_cols else df_raw.copy()
 
             # 4. Format Periode & Cedant Name
             raw_period = str(file_info.period or "").strip()
@@ -279,23 +307,25 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 if reserved_col in df_transformed.columns:
                     df_transformed.drop(columns=[reserved_col], inplace=True)
 
-            # Posisi period dan cedant_name ditaruh di DataFrame
             df_transformed["period"] = full_period
             df_transformed["cedant_name"] = cedant_label
+            df_transformed.columns = make_unique_column_names(df_transformed.columns)
 
-            # 5. Hapus Baris Total / Invalid
+            # 5. Hapus Baris Kosong / Total Invalid
             if not df_transformed.empty:
-                df_transformed.dropna(how="all", inplace=True)
-                key_cols = [c for c in df_transformed.columns if any(k in c.lower() for k in ['policy', 'claim', 'reinsured', 'insured'])]
-                
-                if key_cols:
-                    primary_key = key_cols[0]
-                    df_transformed = df_transformed[
-                        df_transformed[primary_key].notna() & 
-                        ~df_transformed[primary_key].astype(str).str.strip().str.upper().isin(['', 'NAN', 'NONE', 'NULL', '0', '0.0'])
-                    ].copy()
-                else:
-                    df_transformed = df_transformed.dropna(subset=list(df_transformed.columns[:2]), how='all')
+                mapped_db_cols = [k for k, v in (file_info.column_mapping or {}).items() if v and k in df_transformed.columns]
+                if not mapped_db_cols:
+                    mapped_db_cols = [c for c in df_transformed.columns if c not in ["period", "cedant_name"]]
+
+                if mapped_db_cols:
+                    valid_mask = df_transformed[mapped_db_cols].apply(
+                        lambda row: any(
+                            pd.notna(val) and str(val).strip().lower() not in ['', 'nan', 'none', 'null', '<na>', 'total', 'jumlah']
+                            for val in row
+                        ),
+                        axis=1
+                    )
+                    df_transformed = df_transformed[valid_mask].copy()
 
                 df_transformed.reset_index(drop=True, inplace=True)
 

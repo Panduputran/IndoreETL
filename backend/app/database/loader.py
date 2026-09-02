@@ -273,6 +273,8 @@ def _psql_insert_copy(table, conn, keys, data_iter):
 def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
     """
     Membuat tabel secara otomatis di schema 'public' jika belum ada.
+    Jika tabel sudah ada, otomatis menambahkan kolom baru (ALTER TABLE ADD COLUMN IF NOT EXISTS)
+    sehingga tidak ada error ketidakcocokan skema.
     """
     insp = inspect(engine)
     clean_table = table_name.strip().lower()
@@ -298,6 +300,32 @@ def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
         """
         with engine.begin() as conn:
             conn.execute(text(create_table_query))
+    else:
+        # Tabel sudah ada -> Cek apakah ada kolom baru yang perlu ditambahkan
+        try:
+            with engine.connect() as conn:
+                existing_cols_query = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' AND table_name = :tname;
+                """)
+                existing_cols = {r[0].lower() for r in conn.execute(existing_cols_query, {"tname": clean_table}).fetchall()}
+
+            missing_cols = []
+            for col in df.columns:
+                safe_col = sanitize_column_name(col)
+                if safe_col.lower() not in existing_cols and safe_col.lower() != "id":
+                    sample_series = df[col]
+                    sql_type = get_precise_sql_type(safe_col, sample_series)
+                    missing_cols.append((safe_col, sql_type))
+
+            if missing_cols:
+                with engine.begin() as conn:
+                    for safe_col, sql_type in missing_cols:
+                        alter_query = f'ALTER TABLE public."{clean_table}" ADD COLUMN IF NOT EXISTS "{safe_col}" {sql_type};'
+                        conn.execute(text(alter_query))
+        except Exception as alter_err:
+            print(f"[WARN] Gagal menambahkan kolom baru ke tabel {clean_table}: {alter_err}")
 
 
 def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:

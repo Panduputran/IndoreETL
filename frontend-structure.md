@@ -84,6 +84,7 @@ frontend/
     ├── pages/                          # Halaman tampilan utama (Routed Pages)
     │   ├── Dashboard.jsx               # Executive ERP Analytics Dashboard dengan Recharts real-time
     │   ├── LoginPage.jsx               # Halaman Login SSO (Google & Microsoft) + Fallback Lokal
+    │   ├── DevTableManager.jsx         # Menu Dev Tools untuk manajemen & drop tabel fisik testing
     │   ├── UserGuide.jsx               # Panduan pengguna dengan navigasi tab stabil
     │   ├── UserManagement.jsx          # Halaman administrasi akun pengguna & peran otorisasi
     │   ├── FormIpr.jsx                 # Kamus atribut Master IPR (FIRE & KREDIT)

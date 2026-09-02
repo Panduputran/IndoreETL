@@ -146,3 +146,37 @@ export async function getCurrentUser() {
     throw error;
   }
 }
+
+// ==========================================
+// DEV & TABLE MANAGEMENT API
+// ==========================================
+
+export async function getDevPhysicalTables() {
+  try {
+    const response = await apiClient.get('/tables/dev/all-physical');
+    return response.data;
+  } catch (error) {
+    console.error('Gagal mengambil daftar tabel dev:', error);
+    throw error;
+  }
+}
+
+export async function dropPhysicalTable(tableName) {
+  try {
+    const response = await apiClient.delete(`/tables/${tableName}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Gagal menghapus tabel ${tableName}:`, error);
+    throw error;
+  }
+}
+
+export async function dropAllDevPhysicalTables() {
+  try {
+    const response = await apiClient.delete('/tables/dev/drop-all-physical');
+    return response.data;
+  } catch (error) {
+    console.error('Gagal menghapus seluruh tabel fisik:', error);
+    throw error;
+  }
+}

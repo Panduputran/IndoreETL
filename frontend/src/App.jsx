@@ -19,6 +19,7 @@ import ValidasiBordero from './pages/ValidasiBordero';
 import HistoryPage from './pages/HistoryPage';
 import LoginPage from './pages/LoginPage';
 import UserManagement from './pages/UserManagement';
+import DevTableManager from './pages/DevTableManager';
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/form/form-kredit" element={<FormKredit />} />
               <Route path="/validasi-bordero" element={<ValidasiBordero />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/dev-tools" element={<DevTableManager />} />
               <Route path="/users" element={<UserManagement />} />
               <Route path="/master/mapping" element={<MasterMapping />} />
               <Route path="/form-ipr" element={<FormIpr />} />

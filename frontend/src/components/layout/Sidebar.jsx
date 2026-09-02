@@ -11,7 +11,8 @@ import {
   BookOpen, 
   HelpCircle, 
   Users,
-  ChevronDown 
+  ChevronDown,
+  Terminal
 } from 'lucide-react';
 
 export default function Sidebar({ isBlocked = false }) {
@@ -69,6 +70,7 @@ export default function Sidebar({ isBlocked = false }) {
   ];
 
   const secondaryItems = [
+    { id: 'dev-tools', label: 'Dev Tools', path: '/dev-tools', icon: Terminal, badge: 'DEV' },
     { id: 'users', label: 'User Management', path: '/users', icon: Users },
     { id: 'guide', label: 'User Guide', path: '/user-guide', icon: HelpCircle },
   ];
@@ -198,8 +200,15 @@ export default function Sidebar({ isBlocked = false }) {
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <IconComp className={`w-4.5 h-4.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                  <span>{link.label}</span>
+                  <IconComp className={`w-4.5 h-4.5 shrink-0 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <div className="flex items-center justify-between w-full">
+                    <span>{link.label}</span>
+                    {link.badge && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        {link.badge}
+                      </span>
+                    )}
+                  </div>
                 </Link>
               );
             })}
