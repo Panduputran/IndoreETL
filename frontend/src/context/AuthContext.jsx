@@ -39,6 +39,24 @@ export function AuthProvider({ children }) {
     throw new Error('Gagal mendapatkan token autentikasi.');
   };
 
+  const loginSSO = async (provider, profileData = {}) => {
+    const payload = {
+      provider,
+      email: profileData.email,
+      full_name: profileData.full_name || profileData.name || 'User SSO',
+      avatar_url: profileData.avatar_url || profileData.picture || null,
+      id_token: profileData.id_token || null,
+    };
+    const res = await loginSSOUser(payload);
+    if (res && res.access_token) {
+      localStorage.setItem('indore_auth_token', res.access_token);
+      setToken(res.access_token);
+      setUser(res.user);
+      return res;
+    }
+    throw new Error('Gagal melakukan autentikasi SSO.');
+  };
+
   const logout = () => {
     localStorage.removeItem('indore_auth_token');
     setToken(null);
@@ -52,6 +70,7 @@ export function AuthProvider({ children }) {
     isAdmin: user?.role === 'admin',
     loading,
     login,
+    loginSSO,
     logout,
   };
 

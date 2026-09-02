@@ -7,16 +7,16 @@ import {
   AlertTriangle, 
   Database, 
   FileSpreadsheet, 
-  HelpCircle,
-  Layers,
-  Zap,
-  Info,
-  SlidersHorizontal,
-  Download,
-  Building2,
-  ShieldCheck,
-  Search,
-  FileCheck
+  HelpCircle, 
+  Layers, 
+  Zap, 
+  Info, 
+  SlidersHorizontal, 
+  Download, 
+  Building2, 
+  ShieldCheck, 
+  Search, 
+  FileCheck 
 } from 'lucide-react';
 
 export default function UserGuide() {
@@ -78,8 +78,15 @@ export default function UserGuide() {
     }
   ];
 
+  const tabs = [
+    { id: 'workflow', label: 'Alur Kerja Pipeline' },
+    { id: 'aggregation', label: 'Agregasi Multi-Cedant' },
+    { id: 'validation', label: 'Aturan Validasi' },
+    { id: 'faq', label: 'Tanya Jawab (FAQ)' },
+  ];
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6 font-sans">
+    <div className="p-8 max-w-7xl mx-auto space-y-6 font-sans text-slate-800">
       
       {/* Header Halaman */}
       <div>
@@ -91,185 +98,158 @@ export default function UserGuide() {
         </p>
       </div>
 
-      {/* Quick Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200/80 pb-4 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveTab('workflow')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'workflow'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          Alur Kerja Pipeline
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('aggregation')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'aggregation'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          Agregasi Multi-Cedant
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('validation')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'validation'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          Aturan Validasi
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('faq')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'faq'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          Tanya Jawab (FAQ)
-        </button>
+      {/* Quick Navigation Tabs with stable layout */}
+      <div className="flex items-center gap-2.5 border-b border-slate-200/80 pb-4 overflow-x-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+              activeTab === tab.id
+                ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* TAB 1: WORKFLOW */}
-      {activeTab === 'workflow' && (
-        <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {steps.map((item, idx) => (
-              <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100">
-                      {item.icon}
+      {/* Stable Content Container */}
+      <div className="min-h-[420px]">
+        {/* TAB 1: WORKFLOW */}
+        {activeTab === 'workflow' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {steps.map((item, idx) => (
+                <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100">
+                        {item.icon}
+                      </div>
+                      <span className="font-mono font-bold text-slate-300 text-xl">{item.step}</span>
                     </div>
-                    <span className="font-mono font-bold text-slate-300 text-xl">{item.step}</span>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-800 text-base">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed mt-2">{item.desc}</p>
+                    <div>
+                      <h3 className="font-semibold text-slate-800 text-base">{item.title}</h3>
+                      <p className="text-slate-500 text-sm leading-relaxed mt-2">{item.desc}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-5 flex items-start gap-3.5 text-blue-900">
-            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div className="space-y-1 text-sm">
-              <p className="font-medium">Tips Penanganan Berkas Heterogen:</p>
-              <p className="text-blue-700 leading-relaxed">
-                Jika berkas Excel dari cedant memiliki banyak baris judul atau logo perusahaan di bagian atas, parser otomatis akan mendeteksi baris offset header secara mandiri. Pastikan lembar kerja (sheet) target telah terpilih dengan benar pada tahap inspeksi.
-              </p>
+            <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-5 flex items-start gap-3.5 text-blue-900">
+              <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium">Tips Penanganan Berkas Heterogen:</p>
+                <p className="text-blue-700 leading-relaxed">
+                  Jika berkas Excel dari cedant memiliki banyak baris judul atau logo perusahaan di bagian atas, parser otomatis akan mendeteksi baris offset header secara mandiri. Pastikan lembar kerja (sheet) target telah terpilih dengan benar pada tahap inspeksi.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* TAB 2: AGGREGATION FEATURES */}
-      {activeTab === 'aggregation' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6 animate-in fade-in duration-150">
-          <div>
-            <h3 className="font-semibold text-slate-800 text-base">Fitur Agregasi & Tampilan Terpadu (Unified COB Viewer)</h3>
-            <p className="text-slate-500 text-sm mt-1">
-              Konsolidasi data bordero lintas perusahaan asuransi tanpa perlu membuka tabel fisik secara terpisah.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2.5">
-              <div className="flex items-center gap-2.5">
-                <Building2 className="w-5 h-5 text-blue-600" />
-                <span className="font-semibold text-blue-900 text-sm">Semua Premi (All Cedants)</span>
-              </div>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                Menyatukan seluruh data transaksi premi dari seluruh tabel cedant yang aktif (misal: ACA, Tripakarta, Buana Independent, Askrida) ke dalam satu tampilan tabel besar. Disertai kolom identitas <code className="font-mono font-medium text-blue-700 bg-blue-100 px-1 py-0.5 rounded">cedant_name</code> untuk memudahkan pelacakan asal data.
+        {/* TAB 2: AGGREGATION FEATURES */}
+        {activeTab === 'aggregation' && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6 animate-in fade-in duration-150">
+            <div>
+              <h3 className="font-semibold text-slate-800 text-base">Fitur Agregasi & Tampilan Terpadu (Unified COB Viewer)</h3>
+              <p className="text-slate-500 text-sm mt-1">
+                Konsolidasi data bordero lintas perusahaan asuransi tanpa perlu membuka tabel fisik secara terpisah.
               </p>
             </div>
 
-            <div className="p-5 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2.5">
-              <div className="flex items-center gap-2.5">
-                <FileSpreadsheet className="w-5 h-5 text-rose-600" />
-                <span className="font-semibold text-rose-900 text-sm">Semua Klaim (All Cedants)</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-5 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  <span className="font-semibold text-blue-900 text-sm">Semua Premi (All Cedants)</span>
+                </div>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Menyatukan seluruh data transaksi premi dari seluruh tabel cedant yang aktif (misal: ACA, Tripakarta, Buana Independent, Askrida) ke dalam satu tampilan tabel besar. Disertai kolom identitas <code className="font-mono font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">cedant_name</code> untuk memudahkan pelacakan asal data.
+                </p>
               </div>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                Menyatukan seluruh data klaim dari seluruh cedant ke dalam antarmuka terpadu. Mempermudah audit total klaim, tanggal kejadian (DOL), nomor berkas klaim, dan penyebab kerugian (Cause of Loss) secara menyeluruh.
-              </p>
-            </div>
-          </div>
 
-          <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5 text-sm text-slate-700">
-            <h4 className="font-medium text-slate-800">Keuntungan Mode Agregasi:</h4>
-            <ul className="list-disc pl-5 space-y-1 text-slate-600">
-              <li>Pencarian data cepat lintas cedant hanya dengan mengetik nomor polis atau nama tertanggung pada search bar.</li>
-              <li>Filter periode dinamis langsung menghitung total baris gabungan seluruh cedant pada kuartal yang dipilih.</li>
-              <li>Ekspor CSV instan untuk kebutuhan rekapitulasi data dan pelaporan aktuaria reasuransi.</li>
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: VALIDATION RULES */}
-      {activeTab === 'validation' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6 animate-in fade-in duration-150">
-          <div>
-            <h3 className="font-semibold text-slate-800 text-base">Status Integritas Data & Indikator Validasi</h3>
-            <p className="text-slate-500 text-sm mt-1">
-              Panduan pemahaman indikator kualitas data pada hasil pemuatan tabel database.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-5 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span className="font-semibold text-emerald-800 text-sm">Status Valid</span>
+              <div className="p-5 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <FileSpreadsheet className="w-5 h-5 text-rose-600" />
+                  <span className="font-semibold text-rose-900 text-sm">Semua Klaim (All Cedants)</span>
+                </div>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Menyatukan seluruh data klaim dari seluruh cedant ke dalam antarmuka terpadu. Mempermudah audit total klaim, tanggal kejadian (DOL), nomor berkas klaim, dan penyebab kerugian (Cause of Loss) secara menyeluruh.
+                </p>
               </div>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                Menandakan bahwa seluruh kolom penting (seperti Nomor Polis, Nama Tertanggung/Debitur, Nilai TSI, Premi/Klaim) terisi dengan data yang valid dan tidak kosong.
-              </p>
             </div>
 
-            <div className="p-5 rounded-xl border border-amber-200 bg-amber-50/30 space-y-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600" />
-                <span className="font-semibold text-amber-800 text-sm">Status Warning</span>
-              </div>
-              <p className="text-slate-600 text-sm leading-relaxed">
-                Menandakan ada satu atau lebih kolom penting yang bernilai kosong atau NULL. Data tetap tersimpan di database namun memerlukan peninjauan lebih lanjut.
-              </p>
+            <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5 text-sm text-slate-700">
+              <h4 className="font-medium text-slate-800">Keuntungan Mode Agregasi:</h4>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600">
+                <li>Pencarian data cepat lintas cedant hanya dengan mengetik nomor polis atau nama tertanggung pada search bar.</li>
+                <li>Filter periode dinamis langsung menghitung total baris gabungan seluruh cedant pada kuartal yang dipilih.</li>
+                <li>Ekspor CSV instan untuk kebutuhan rekapitulasi data dan pelaporan aktuaria reasuransi.</li>
+              </ul>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* TAB 4: FAQ */}
-      {activeTab === 'faq' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 animate-in fade-in duration-150">
-          <div>
-            <h3 className="font-semibold text-slate-800 text-base">Tanya Jawab Seputar Sistem (FAQ)</h3>
-            <p className="text-slate-500 text-sm mt-1">
-              Pertanyaan umum mengenai alur pemrosesan bordero dan pengelolaan database reasuransi.
-            </p>
-          </div>
+        {/* TAB 3: VALIDATION RULES */}
+        {activeTab === 'validation' && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6 animate-in fade-in duration-150">
+            <div>
+              <h3 className="font-semibold text-slate-800 text-base">Status Integritas Data & Indikator Validasi</h3>
+              <p className="text-slate-500 text-sm mt-1">
+                Panduan pemahaman indikator kualitas data pada hasil pemuatan tabel database.
+              </p>
+            </div>
 
-          <div className="divide-y divide-slate-100">
-            {faqs.map((f, idx) => (
-              <div key={idx} className="py-4 space-y-1.5">
-                <h4 className="font-medium text-slate-900 text-sm">{f.q}</h4>
-                <p className="text-slate-600 text-sm leading-relaxed">{f.a}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-5 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <span className="font-semibold text-emerald-800 text-sm">Status Valid</span>
+                </div>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Menandakan bahwa seluruh kolom penting (seperti Nomor Polis, Nama Tertanggung/Debitur, Nilai TSI, Premi/Klaim) terisi dengan data yang valid dan tidak kosong.
+                </p>
               </div>
-            ))}
+
+              <div className="p-5 rounded-xl border border-amber-200 bg-amber-50/30 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  <span className="font-semibold text-amber-800 text-sm">Status Warning</span>
+                </div>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Menandakan ada satu atau lebih kolom penting yang bernilai kosong atau NULL. Data tetap tersimpan di database namun memerlukan peninjauan lebih lanjut.
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* TAB 4: FAQ */}
+        {activeTab === 'faq' && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 animate-in fade-in duration-150">
+            <div>
+              <h3 className="font-semibold text-slate-800 text-base">Tanya Jawab Seputar Sistem (FAQ)</h3>
+              <p className="text-slate-500 text-sm mt-1">
+                Pertanyaan umum mengenai alur pemrosesan bordero dan pengelolaan database reasuransi.
+              </p>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {faqs.map((f, idx) => (
+                <div key={idx} className="py-4 space-y-1.5">
+                  <h4 className="font-medium text-slate-900 text-sm">{f.q}</h4>
+                  <p className="text-slate-600 text-sm leading-relaxed">{f.a}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

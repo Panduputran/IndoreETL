@@ -19,32 +19,43 @@
 
 ## Overview
 
-Insurance Bordero ETL & Cleansing Platform adalah platform otomasi pipeline data (Extract, Transform, Load) skala enterprise yang dirancang khusus untuk memproses, memvalidasi, dan membersihkan jutaan baris transaksi bordero reasuransi/asuransi dari berbagai perusahaan asuransi (cedants).
+**Insurance Bordero ETL & Cleansing Platform (IndoreETL)** adalah platform otomasi pipeline data (*Extract, Transform, Load*) skala enterprise yang dirancang khusus untuk memproses, memvalidasi, menstandardisasi, dan menganalisis jutaan baris transaksi bordero reasuransi/asuransi dari berbagai perusahaan asuransi (*cedants*).
 
-Platform ini menggabungkan antarmuka web modern berbasis React 19 & Tailwind CSS dengan mesin komputasi berkecepatan tinggi Python FastAPI, Pandas, & NumPy yang terintegrasi dengan database PostgreSQL melalui teknik injeksi PostgreSQL COPY berkinerja tinggi.
+Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CSS v4, dan Recharts** dengan mesin komputasi berkecepatan tinggi **Python FastAPI, Pandas, & NumPy** yang terintegrasi dengan basis data **PostgreSQL** melalui teknik injeksi binary COPY stream berkinerja tinggi.
 
 ---
 
 ## Fitur Utama (Key Features)
 
-* **Dynamic Header & Metadata Detection:** Otomatis mendeteksi baris offset metadata (kop surat, judul laporan) dan mengidentifikasi letak baris header kolom pada berbagai format berkas Excel/CSV.
-* **Vectorized High-Speed Cleansing:** Memanfaatkan vektorisasi NumPy dan Pandas untuk normalisasi format tanggal tidak standar, konversi mata uang (currency stripping), pembersihan karakter non-numerik, dan validasi nomor polis.
-* **Multi-Cedant Pluggable Architecture:** Mendukung modul transformasi modular per perusahaan asuransi mitra:
-  * PT Asuransi Central Asia (ACA)
-  * PT Asuransi Bangun Askrida
-  * PT Asuransi Kredit Indonesia (Askrindo)
-  * PT Asuransi Buana Independent
-  * PT Jasa Raharja Cabang Jabar (Jakre Jabar)
-  * PT Penjaminan Kredit Daerah Jabar (Jamkrida Jabar)
-  * PT Jaminan Kredit Indonesia (Jamkrindo)
-  * PT Asuransi Tri Pakarta
-* **Dual IPR Master Schema:** Dukungan pemetaan otomatis untuk 2 Lini Bisnis (Class of Business / COB):
-  * **IPR FIRE / Property Master:** 51 atribut standar (TSI 100%, Okupasi, Zona Risiko Gempa EQ, Lokasi Objek).
-* **High-Throughput Batch Ingestion:** Pemuatan data batch yang hemat memori (memory-safe chunking) menggunakan PostgreSQL COPY stream untuk memproses dataset berskala besar.
-* **Alembic Database Migration:** Pengelolaan evolusi skema tabel sistem terstruktur (`app_users`, `etl_activity_log`, `mapping_presets`) menggunakan Alembic.
-* **Audit Trail & Activity Logging:** Pencatatan otomatis setiap proses ETL ke database lengkap dengan metrik jumlah baris, ukuran file, status, dan durasi eksekusi.
-* **JWT Authentication & User Management:** Autentikasi berbasis JSON Web Token (JWT) dan manajemen peran pengguna (Admin, Operator, Viewer).
-* **Unified Live Data Viewer:** Antarmuka tabel interaktif untuk meninjau data Premi dan Klaim yang telah dinormalisasi lengkap dengan filter tabs, pencarian cepat, paginasi, dan modal konfirmasi penghapusan.
+* **Autentikasi Modern & SSO (Google & Microsoft Identity):**
+  * Tombol login Single Sign-On (SSO) terintegrasi dengan Google OAuth2 dan Microsoft Azure AD.
+  * Form login akun lokal/operator untuk kebutuhan offline fallback.
+  * Skema penyimpanan profil user (`auth_provider`, `avatar_url`, `role`, `last_login_at`).
+* **Executive ERP Analytics Dashboard:**
+  * Metrik KPI real-time dengan kueri instan sub-milidetik (`pg_stat_user_tables`).
+  * Visualisasi grafik Donut/Pie Chart untuk komposisi premi vs klaim dan distribusi peran user.
+  * Grafik Bar Chart kontribusi volume transaksi per cedant dan Area Chart kecepatan eksekusi ETL (*ms*).
+* **Filter Tabel Database Resmi Cedant (`{kategori}_{cedant}_{cob}`):**
+  * Sistem kueri menyaring dan hanya menampilkan tabel fisik resmi (misal `premi_aca_fire`, `claim_tripakarta_fire`, `premi_askrida_credit`).
+  * Tabel sistem/metadata (`alembic_version`, `app_users`, `etl_activity_log`, `mapping_presets`) dan tabel backup otomatis disembunyikan.
+* **Visual Mapping Cockpit dengan Kontras Visual Tinggi:**
+  * Penandaan baris *Required* yang belum terpetakan dengan border merah tebal (`border-l-4 border-l-rose-500`), latar merah muda (`bg-rose-50/80`), dan badge `* WAJIB DIISI`.
+  * Penandaan baris opsional kosong berwarna kuning/amber (`border-l-4 border-l-amber-400`).
+  * Penandaan baris valid berwarna hijau (`border-l-4 border-l-emerald-500`).
+  * Integrasi manajemen preset pemetaan (*"Terapkan Preset"* & *"Simpan Preset ke Database"*).
+* **Audit Trail & Modal Detail Eksekusi (Eye Action Icon):**
+  * Tabel riwayat ETL dengan tombol aksi **Mata (Detail)** yang membuka modal interaktif 3 tab:
+    1. *Ringkasan Eksekusi:* Metrik baris, durasi, status, nama file, dan banner error.
+    2. *Hasil Pemetaan Kolom:* Visualisasi pemetaan kolom sumber terhadap field target IPR & Non-IPR.
+    3. *Log Teknis & Audit:* Konsol catatan tahapan inspeksi, sanitasi, dan stream injeksi ke database.
+* **User Guide Bebas Layout Shift:**
+  * Antarmuka panduan pengguna terstruktur dengan tombol tab fixed-border dan kontainer stabil (`min-h-[420px]`).
+* **Dynamic Header & Metadata Detection:**
+  * Otomatis mendeteksi baris offset metadata (kop surat, judul laporan) dan mengidentifikasi letak baris header kolom pada berkas Excel/CSV.
+* **Vectorized High-Speed Cleansing:**
+  * Memanfaatkan vektorisasi NumPy dan Pandas untuk normalisasi format tanggal, pembersihan teks mata uang, pemaksaan numerik 2 desimal, dan validasi integritas data.
+* **High-Throughput Batch Ingestion:**
+  * Pemuatan data batch hemat memori (*memory-safe chunking*) menggunakan PostgreSQL COPY stream multi-chunk.
 
 ---
 
@@ -53,26 +64,29 @@ Platform ini menggabungkan antarmuka web modern berbasis React 19 & Tailwind CSS
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │                 React Frontend (Web Portal)                 │
-│  - Drag & Drop Upload with Auto-Inspection                  │
-│  - Interactive Sheet Selection & Dynamic Mapping            │
-│  - Real-Time ETL Terminal Logs & Visual Progress Monitor    │
-│  - Unified COB Data Viewers (Fire & Credit)                 │
+│  - Google & Microsoft SSO + Local Auth Provider             │
+│  - Executive ERP Analytics Dashboard (Recharts Visualizer)  │
+│  - High-Contrast Visual Mapping Cockpit with Presets        │
+│  - Unified COB Data Viewers & Data Exporter (Fire & Credit) │
+│  - ETL Audit Trail & Multi-Tab Execution Detail Modal       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ REST API (JSON / Multipart Form)
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   FastAPI Backend Engine                    │
-│  - File Inspector & Dynamic Header Parsing (Calamine/Excel) │
-│  - Cedant-Specific Sanitization Modules (Factory Pattern)   │
+│  - SSO OAuth & JWT Security Router                          │
+│  - File Inspector & Dynamic Header Parsing Engine           │
 │  - NumPy / Pandas High-Speed Vectorized Transformation      │
-│  - Auto DDL & Table Structure Synchronization               │
+│  - Official Table Name Filter & Sub-ms PG Stats Dashboard   │
+│  - Column Name Deduplication (make_unique_column_names)     │
 └──────────────────────────────┬──────────────────────────────┘
                                │ PostgreSQL COPY Batch Stream
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     PostgreSQL Database                     │
-│  - Normalized Bordero Tables (FIRE & KREDIT Master Data)    │
-│  - Audit Logs & Error Trails                                │
+│  - Official Cedant Tables ({kategori}_{cedant}_{cob})       │
+│  - System Metadata (app_users, etl_activity_log, presets)   │
+│  - Sub-ms Live Statistics via pg_stat_user_tables           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,54 +95,7 @@ Platform ini menggabungkan antarmuka web modern berbasis React 19 & Tailwind CSS
 ## Struktur Repositori
 
 Untuk dokumentasi arsitektur modul secara mendalam, silakan merujuk ke dokumen berikut:
+* **[Dokumentasi Arsitektur Utama (gemini.md)](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/gemini.md)**: Ringkasan komprehensif arsitektur, workflow pipeline, dan skema data.
 * **[Backend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/backend-structure.md)**: Rincian modul router, services cedant, database loader, dan skema Pydantic.
 * **[Frontend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/frontend-structure.md)**: Rincian komponen UI, feature modules, routing, dan integrasi API Axios.
-
-```text
-IndonesiareETL/
-├── backend/                            # Server FastAPI & Mesin Pemrosesan ETL
-│   ├── app/                            # Kode sumber aplikasi backend (api, core, database, services)
-│   ├── .env.example                    # Template variabel environment backend
-│   └── requirements.txt                # Dependensi pustaka Python
-├── frontend/                           # Aplikasi Web Portal React (Vite + Tailwind CSS)
-│   ├── src/                            # Kode sumber frontend (components, features, pages, utils)
-│   ├── .env                            # Variabel environment frontend
-│   └── package.json                    # Dependensi paket Node.js
-├── backend-structure.md                # Dokumentasi arsitektur backend
-├── frontend-structure.md               # Dokumentasi arsitektur frontend
-├── setup.md                            # Panduan instalasi dan setup dari awal
-└── README.md                           # Ringkasan utama proyek
-```
-
----
-
-## Panduan Memulai Cepat (Quick Start)
-
-Panduan instalasi langkah demi langkah dari awal dapat dilihat di **[setup.md](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/setup.md)**.
-
-### Ringkasan Menjalankan Proyek:
-
-#### 1. Setup Backend:
-```bash
-cd backend
-python -m venv venv
-# Windows: .\venv\Scripts\Activate.ps1 | Linux: source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # Sesuaikan kredensial PostgreSQL
-uvicorn app.main:app --reload --port 8000
-```
-Backend API & Swagger Docs aktif di: `http://localhost:8000/docs`
-
-#### 2. Setup Frontend:
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Frontend Web Portal aktif di: `http://localhost:5173`
-
----
-
-## Lisensi & Kontribusi
-
-Silakan pelajari [CONTRIBUTION.md](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/CONTRIBUTION.md) dan [LICENSE.md](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/LICENSE.md) untuk pedoman kontribusi dan ketentuan lisensi proyek.
+* **[Panduan Instalasi & Setup (setup.md)](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/setup.md)**: Panduan setup database PostgreSQL, backend FastAPI, dan frontend React.

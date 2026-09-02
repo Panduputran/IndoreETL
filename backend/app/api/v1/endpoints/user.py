@@ -3,10 +3,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+import re
 
 from app.database.connection import get_db
 from app.models.user import AppUser
-from app.schema.user import UserCreate, UserLogin, UserResponse, UserUpdate
+from app.schema.user import UserCreate, UserLogin, UserResponse, UserUpdate, UserSSOLogin
 from app.schema.token import Token
 from app.core.security import (
     hash_password,
@@ -21,7 +22,7 @@ router = APIRouter()
 @router.post("/login", response_model=Token, summary="User Login & Get JWT Access Token")
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     """
-    Autentikasi user dengan username dan password.
+    Autentikasi user lokal dengan username dan password.
     Mengembalikan JWT access token jika kredensial valid.
     """
     user = db.query(AppUser).filter(
@@ -35,7 +36,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_password(payload.password, user.password_hash):
+    if not user.password_hash or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Username atau password salah.",
@@ -58,6 +59,8 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
+        "auth_provider": user.auth_provider,
+        "avatar_url": user.avatar_url,
     }
     access_token = create_access_token(data=token_data)
 
@@ -70,6 +73,91 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             "email": user.email,
             "full_name": user.full_name,
             "role": user.role,
+            "auth_provider": user.auth_provider,
+            "avatar_url": user.avatar_url,
+        },
+    }
+
+
+@router.post("/sso", response_model=Token, summary="Google & Microsoft SSO Login")
+def sso_login(payload: UserSSOLogin, db: Session = Depends(get_db)):
+    """
+    Autentikasi menggunakan Single Sign-On (Google OAuth / Microsoft Identity).
+    Mencari user berdasarkan email. Jika belum ada, otomatis mendaftarkan user baru.
+    """
+    email_clean = payload.email.lower().strip()
+    provider_clean = payload.provider.lower().strip()
+    
+    user = db.query(AppUser).filter(func.lower(AppUser.email) == email_clean).first()
+
+    if user:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Akun pengguna dinonaktifkan. Hubungi administrator.",
+            )
+        # Perbarui data login & avatar jika berubah
+        user.auth_provider = provider_clean
+        if payload.avatar_url:
+            user.avatar_url = payload.avatar_url
+        if payload.full_name and not user.full_name:
+            user.full_name = payload.full_name.strip()
+        user.last_login_at = datetime.now(timezone.utc)
+        db.commit()
+    else:
+        # Generate username unik dari email (contoh: 'budi.santoso')
+        base_username = email_clean.split("@")[0]
+        base_username = re.sub(r"[^a-zA-Z0-9_.]", "", base_username)
+        if len(base_username) < 3:
+            base_username = f"user_{base_username}"
+            
+        username_candidate = base_username
+        counter = 1
+        while db.query(AppUser).filter(func.lower(AppUser.username) == username_candidate.lower()).first():
+            username_candidate = f"{base_username}_{counter}"
+            counter += 1
+
+        # Cek apakah ini user pertama di sistem (jika iya, jadikan admin)
+        total_users = db.query(AppUser).count()
+        default_role = "admin" if total_users == 0 else "operator"
+
+        user = AppUser(
+            username=username_candidate,
+            email=email_clean,
+            password_hash=None,
+            full_name=payload.full_name.strip() or username_candidate,
+            role=default_role,
+            auth_provider=provider_clean,
+            avatar_url=payload.avatar_url,
+            is_active=True,
+            last_login_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token_data = {
+        "sub": user.username,
+        "user_id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "auth_provider": user.auth_provider,
+        "avatar_url": user.avatar_url,
+    }
+    access_token = create_access_token(data=token_data)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "auth_provider": user.auth_provider,
+            "avatar_url": user.avatar_url,
         },
     }
 
@@ -89,10 +177,10 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
 def register_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
-    current_user: Optional[dict] = Depends(lambda: None)  # Optional check
+    current_user: Optional[dict] = Depends(lambda: None)
 ):
     """
-    Mendaftarkan pengguna baru.
+    Mendaftarkan pengguna baru lokal.
     Jika belum ada user sama sekali di database, user pertama otomatis menjadi admin.
     """
     # Cek username duplikat
@@ -115,7 +203,6 @@ def register_user(
             detail=f"Email '{payload.email}' sudah terdaftar.",
         )
 
-    # Cek total user di database
     total_users = db.query(AppUser).count()
     assigned_role = "admin" if total_users == 0 else payload.role
 
@@ -125,6 +212,7 @@ def register_user(
         password_hash=hash_password(payload.password),
         full_name=payload.full_name.strip(),
         role=assigned_role,
+        auth_provider="local",
         is_active=True,
     )
     db.add(new_user)
@@ -134,7 +222,7 @@ def register_user(
     return new_user
 
 
-@router.get("/list", response_model=List[UserResponse], summary="List All Registered Users (Admin / Operator)")
+@router.get("/list", response_model=List[UserResponse], summary="List All Registered Users")
 def list_users(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)

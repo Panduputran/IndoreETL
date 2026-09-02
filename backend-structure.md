@@ -1,6 +1,6 @@
 # Backend Architecture & Directory Structure
 
-Dokumentasi mengenai arsitektur, modul layanan, dan hierarki direktori backend untuk Insurance Bordero ETL & Cleansing Platform (IndonesiaRe).
+Dokumentasi arsitektur, modul layanan, skema database, dan hierarki direktori backend untuk **Insurance Bordero ETL & Cleansing Platform (IndonesiaRe)**.
 
 ---
 
@@ -15,9 +15,12 @@ backend/
 ├── alembic/
 │   ├── env.py                          # Runtime script migrasi terhubung ke engine PostgreSQL
 │   ├── script.py.mako                  # Template pembuatan migration revision
-│   └── versions/                       # Berkas migrasi database
-│       └── 0001_initial_schema.py      # Initial migration (app_users, etl_activity_log, mapping_presets)
-├── ETL Workflow.png                    # Diagram alur proses ETL bordero
+│   └── versions/                       # Berkas migrasi database Alembic
+│       ├── 0001_create_app_users.py    # Migrasi tabel pengguna aplikasi (app_users)
+│       ├── 0002_create_etl_activity_log.py # Migrasi tabel audit log aktivitas ETL
+│       ├── 0003_create_mapping_presets.py  # Migrasi tabel preset pemetaan kolom
+│       ├── 0004_update_app_users_sso.py    # Migrasi kolom auth_provider & avatar_url
+│       └── 0005_add_mapping_config_to_etl_log.py # Migrasi kolom mapping_config & technical_log
 ├── requirements.txt                    # Dependensi pustaka Python (FastAPI, Pandas, SQLAlchemy, Alembic, dll)
 ├── seed_admin.py                       # Script inisialisasi akun administrator default
 ├── temp/                               # Direktori penyimpanan sementara file inspeksi
@@ -30,12 +33,11 @@ backend/
     ├── api/
     │   └── v1/
     │       ├── router.py               # Agregator router utama yang menggabungkan seluruh endpoint v1
-    │       ├── backups/                # Arsip histori router
     │       └── endpoints/
-    │           ├── etl.py              # Endpoint inti pemrosesan ETL (/inspect, /create-table, /process, /process-with-mapping)
-    │           ├── history.py          # Endpoint riwayat & audit trail proses ETL (/logs, /presets)
-    │           ├── tables.py           # Endpoint pengambilan & agregasi data live PostgreSQL (COB Fire/Kredit)
-    │           └── user.py             # Endpoint autentikasi dan manajemen pengguna (/login, /me, /register, /list)
+    │           ├── etl.py              # Endpoint inti pemrosesan ETL (/inspect, /create-table, /process-with-mapping)
+    │           ├── history.py          # Endpoint riwayat audit ETL (/logs) & manajemen preset (/presets)
+    │           ├── tables.py           # Endpoint query tabel resmi ({kategori}_{cedant}_{cob}) & dashboard sub-ms
+    │           └── user.py             # Endpoint autentikasi lokal & SSO (/login, /sso, /me, /register, /list)
     │
     ├── core/
     │   ├── config.py                   # Master Columns, Sheet Mapping, aturan skema IPR & konfigurasi global
@@ -43,37 +45,34 @@ backend/
     │
     ├── database/
     │   ├── connection.py               # Engine SQLAlchemy, SessionLocal, declarative Base & koneksi pool PostgreSQL
-    │   ├── loader.py                   # Engine injeksi batch (PostgreSQL binary/COPY stream)
-    │   └── backups/                    # Arsip histori modul database
+    │   └── loader.py                   # Engine injeksi batch & deduplikasi kolom (make_unique_column_names)
     │
     ├── models/                         # Definisi SQLAlchemy ORM Models
     │   ├── __init__.py                 # Re-export model & Base metadata
     │   ├── base.py                     # Base declarative export
-    │   ├── user.py                     # Skema tabel app_users
-    │   ├── etl_log.py                  # Skema tabel etl_activity_log
+    │   ├── user.py                     # Skema tabel app_users (auth_provider, avatar_url, role, last_login_at)
+    │   ├── etl_log.py                  # Skema tabel etl_activity_log (mapping_config, technical_log)
     │   └── mapping_preset.py           # Skema tabel mapping_presets
     │
     ├── schema/
     │   ├── etl.py                      # Pydantic Schema untuk request/response inspeksi & eksekusi ETL
     │   ├── token.py                    # Pydantic Schema untuk validasi token akses JWT
-    │   └── user.py                     # Pydantic Schema untuk data payload pengguna
+    │   └── user.py                     # Pydantic Schema untuk data payload pengguna & SSO (UserSSOLogin)
     │
     ├── services/
     │   ├── etl_factory.py              # Dynamic Orchestrator yang mengarahkan payload ke kelas Cedant yang sesuai
     │   ├── inspector_service.py        # Logika inspeksi berkas Excel, dynamic header parsing, dan DDL generator
     │   │
-    │   ├── cedants/                    # Modul transformasi data spesifik per perusahaan asuransi (Cedant)
-    │   │   ├── base.py                 # Abstract Base Class / Interface (process_premi & process_claim)
-    │   │   ├── aca.py                  # Pembersihan & standardisasi skema PT Asuransi Central Asia (ACA)
-    │   │   ├── askrida.py              # Pembersihan & standardisasi skema PT Asuransi Bangun Askrida (Askrida)
-    │   │   ├── askrindo.py             # Pembersihan & standardisasi skema PT Asuransi Kredit Indonesia (Askrindo)
-    │   │   ├── buanaindependent.py     # Pembersihan & standardisasi skema PT Asuransi Buana Independent (Buana Independent)
-    │   │   ├── jakrejabar.py           # Pembersihan & standardisasi skema PT Jasa Raharja Cabang Jabar (Jakre Jabar)
-    │   │   ├── jamkridajabar.py        # Pembersihan & standardisasi skema PT Penjaminan Kredit Daerah Jabar (Jamkrida Jabar)
-    │   │   ├── jamkrindo.py            # Pembersihan & standardisasi skema PT Jaminan Kredit Indonesia (Jamkrindo)
-    │   │   └── tripakarta.py           # Pembersihan & standardisasi skema PT Asuransi Tri Pakarta (Tripakarta)
-    │   │
-    │   └── backup/                     # Arsip versi terdahulu services
+    │   └── cedants/                    # Modul transformasi data spesifik per perusahaan asuransi (Cedant)
+    │       ├── base.py                 # Abstract Base Class / Interface (process_premi & process_claim)
+    │       ├── aca.py                  # Pembersihan & standardisasi skema PT Asuransi Central Asia (ACA)
+    │       ├── askrida.py              # Pembersihan & standardisasi skema PT Asuransi Bangun Askrida (Askrida)
+    │       ├── askrindo.py             # Pembersihan & standardisasi skema PT Asuransi Kredit Indonesia (Askrindo)
+    │       ├── buanaindependent.py     # Pembersihan & standardisasi skema PT Asuransi Buana Independent (Buana Independent)
+    │       ├── jakrejabar.py           # Pembersihan & standardisasi skema PT Jasa Raharja Cabang Jabar (Jakre Jabar)
+    │       ├── jamkridajabar.py        # Pembersihan & standardisasi skema PT Penjaminan Kredit Daerah Jabar (Jamkrida Jabar)
+    │       ├── jamkrindo.py            # Pembersihan & standardisasi skema PT Jaminan Kredit Indonesia (Jamkrindo)
+    │       └── tripakarta.py           # Pembersihan & standardisasi skema PT Asuransi Tri Pakarta (Tripakarta)
     │
     └── utils/
         └── helpers.py                  # Fungsi utilitas sistem (pembuatan folder, formatting string, sanitasi dictionary)
@@ -83,21 +82,22 @@ backend/
 
 ## Modul & Layanan Utama
 
-### 1. Database Persistence Layer
-* **Alembic Database Migration:** Mengelola evolusi skema tabel sistem secara terstruktur dan dapat direplikasi via `alembic upgrade head`.
+### 1. Database Persistence & Migrations
+* **Alembic Database Migrations:** 5 berkas migrasi modular mengelola tabel `app_users`, `etl_activity_log`, dan `mapping_presets`.
 * **SQLAlchemy ORM (`app/models/`):**
-  * `app_users`: Menyimpan akun pengguna, peran otorisasi, dan status aktif.
-  * `etl_activity_log`: Menyimpan riwayat audit proses upload dan transformasi bordero secara otomatis.
-  * `mapping_presets`: Menyimpan template pemetaan kolom per cedant dan lini bisnis.
-* **Direct COPY Stream Ingestion (`loader.py`):** Protokol pemuatan data tabular kecepatan tinggi ke tabel fisik PostgreSQL.
+  * `app_users`: Menyimpan akun pengguna, peran otorisasi (`admin`, `operator`, `viewer`), provider SSO (`google`, `microsoft`, `local`), avatar, dan timestamp login terakhir.
+  * `etl_activity_log`: Menyimpan riwayat audit lengkap, konfigurasi mapping JSON (`mapping_config`), dan catatan teknis (`technical_log`).
+  * `mapping_presets`: Menyimpan template pemetaan kolom per kombinasi cedant + COB + kategori.
+* **Direct COPY Stream Ingestion & Column Deduplication (`loader.py`):** Protokol pemuatan data tabular kecepatan tinggi ke tabel fisik PostgreSQL dengan fungsi `make_unique_column_names()` untuk mencegah konflik duplikasi nama kolom.
 
-### 2. Keamanan & Autentikasi (`app/core/security.py`)
-* Password hashing berbasis PBKDF2-HMAC-SHA256 dan Bcrypt standar industri.
-* Autentikasi berbasis JSON Web Token (JWT) dengan masa berlaku terkonfigurasi.
-* FastAPI Dependency `get_current_user` untuk memproteksi endpoint privat.
+### 2. Keamanan & Autentikasi (`app/core/security.py`, `app/api/v1/endpoints/user.py`)
+* Password hashing berbasis PBKDF2-HMAC-SHA256 dan Bcrypt.
+* Autentikasi Single Sign-On (**Google OAuth2 & Microsoft Azure AD**) via endpoint `POST /api/v1/auth/sso`.
+* Autentikasi berbasis JSON Web Token (JWT) dengan dependency `get_current_user`.
 
-### 3. API Endpoints v1
-* **`/api/v1/etl`:** Endpoint inspeksi berkas, pembuatan tabel, dan eksekusi transformasi dinamis.
-* **`/api/v1/tables`:** Endpoint pengambilan data live, agregasi multi-cedant, dan summary dashboard.
-* **`/api/v1/auth`:** Endpoint login JWT, data pengguna aktif (`/me`), registrasi user, dan daftar pengguna.
-* **`/api/v1/history`:** Endpoint audit trail riwayat ETL (`/logs`) dan template pemetaan kolom (`/presets`).
+### 3. Filter Tabel Database Resmi Cedant (`app/api/v1/endpoints/tables.py`)
+* Fungsi `is_official_bordero_table(tname)` menjamin hanya tabel transaksi fisik resmi yang ditampilkan dengan format:
+  `{kategori}_{cedant}_{cob}`
+  (misal `premi_aca_fire`, `claim_tripakarta_fire`, `premi_askrida_credit`).
+* Menyaring dan menyembunyikan tabel sistem/metadata (`alembic_version`, `app_users`, `etl_activity_log`, `mapping_presets`) dan tabel backup.
+* Kueri statistik instan sub-milidetik memanfaatkan `pg_stat_user_tables` untuk mengagregasi ratusan ribu baris data tanpa membebani server.

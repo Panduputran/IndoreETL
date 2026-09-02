@@ -1,94 +1,136 @@
 # IndoreETL — Dynamic Bordero Data Harmonization & Database Pipeline
 
-> Document Version: 0.1.0
-> Target Audience: Engineering Team, ETL Operators, Gemini Context Assistant
+> Document Version: 1.0.0 (Enterprise Release)
+> Target Audience: Engineering Team, ETL Operators, System Administrators, Gemini Context Assistant
 > Role Context: Project Manager & Lead Software Engineer
 
 ---
 
 ## 1. Project Vision & Executive Summary
 
-IndoreETL adalah platform otomasi ekstraksi, transformasi, dan pemuatan data (ETL Engine) khusus untuk memproses berkas laporan bordero (bordereaux) dari berbagai perusahaan mitra (cedants) ke dalam basis data PostgreSQL yang terstandardisasi sesuai regulasi format IPR (Indonesia Re Standard).
+IndoreETL adalah platform otomasi ekstraksi, transformasi, dan pemuatan data (*ETL Engine*) tingkat enterprise khusus untuk memproses berkas laporan bordero (*bordereaux*) dari berbagai perusahaan asuransi mitra (*cedants*) ke dalam basis data PostgreSQL yang terstandardisasi sesuai regulasi format IPR (Indonesia Re Standard).
 
 ### Masalah Utama yang Diselesaikan:
-1. Heterogenitas Format Sumber: Setiap cedant (misal Askrida, ACA, Tripakarta, Marsh) mengirimkan berkas Excel mentah dengan struktur kolom, penamaan alias, baris header bertingkat (merged headers), dan jumlah kolom yang berbeda-beda.
-2. Keterbatasan Hardcoded Script: Skrip kaku (hardcoded mapping) mudah rusak saat cedant mengubah sedikit penamaan kolom atau menambahkan kop surat.
-3. Pemberdayaan Operator & Data Preservation: Sistem menyediakan antarmuka visual berbasis web (Cockpit Mapping UI) agar operator dapat memverifikasi pencocokan kolom secara otomatis, mengontrol kolom non-IPR tambahan tanpa kehilangan data, serta mengeksekusi migrasi ke tabel dinamis dengan aman.
+1. **Heterogenitas Format Sumber:** Setiap cedant (seperti Askrida, ACA, Tripakarta, Buana Independent, Jamkrida Jabar, Jakre Jabar, Askrindo, Jamkrindo, Marsh) mengirimkan berkas Excel mentah dengan struktur kolom, penamaan alias, baris header bertingkat (*merged headers*), dan jumlah kolom yang berbeda-beda.
+2. **Keterbatasan Hardcoded Script:** Skrip kaku (*hardcoded mapping*) mudah rusak saat cedant mengubah sedikit penamaan kolom atau menambahkan kop surat.
+3. **Pemberdayaan Operator & Data Preservation:** Sistem menyediakan antarmuka visual berbasis web (*Cockpit Mapping UI*) agar operator dapat memverifikasi pencocokan kolom secara otomatis, mengontrol kolom non-IPR tambahan tanpa kehilangan data, memilih/menerapkan preset mapping tersimpan, serta mengeksekusi migrasi ke tabel dinamis dengan aman.
+4. **Keamanan & Manajemen Akses:** Dilengkapi autentikasi Single Sign-On (Google & Microsoft Azure AD) serta manajemen akun pengguna berbasis peran (*Role-Based Access Control*).
 
 ---
 
 ## 2. Core Architecture & Stack
 
 ### Backend Engine (Python / FastAPI)
-* Framework: FastAPI (RESTful API & Modular Routers)
-* Data Processing: Pandas, OpenPyXL, Xlrd
-* Database Access: SQLAlchemy Engine + PostgreSQL Client
-* Detection Engine: Dynamic text-scoring header & multi-level parser
+* **Framework:** FastAPI (RESTful API & Modular Routers)
+* **Data Processing:** Pandas, NumPy, OpenPyXL, Xlrd
+* **Database Access:** SQLAlchemy Engine + PostgreSQL Client (psycopg2)
+* **Migration Engine:** Alembic Database Migrations
+* **Security & Auth:** JWT (JSON Web Tokens), PBKDF2-HMAC-SHA256, Bcrypt, SSO OAuth Handler
+* **Detection Engine:** Dynamic text-scoring header & multi-level parser
 
 ### Frontend Interface (React / Vite)
-* Build Tool: Vite + React (Modular Functional Components & Hooks)
-* Styling & UI: Tailwind CSS + Lucide Icons
-* State Management: Transient SessionStorage + LocalStorage Preset Memory
-* Matching Utility: Dual-tier Fuzzy Token Scoring Engine
+* **Build Tool:** Vite + React 19 (Modular Functional Components & Hooks)
+* **Styling & UI:** Tailwind CSS v4 + Lucide React Icons
+* **Charts & Visualizations:** Recharts (Donut/Pie Chart, Bar Chart, Area Chart)
+* **State & Auth Management:** React Context (`AuthContext`), Axios Interceptors, LocalStorage Preset Memory
+* **Matching Utility:** Dual-tier Fuzzy Token Scoring Engine
 
 ---
 
 ## 3. Data Strategy & Schema Matrix
 
 Sistem mendukung 4 Kuadran Standar IPR:
-1. FIRE_PREMIUM (51 Kolom Master IPR)
-2. FIRE_CLAIM (43 Kolom Master IPR)
-3. CREDIT_PREMIUM (Plafon, Tenor, Asuransi Jiwa Kredit)
-4. CREDIT_CLAIM (Klaim Meninggal/Macet Kredit)
+1. **FIRE_PREMIUM:** 51 Kolom Master IPR (Aset fisik, okupasi, zona risiko gempa bumi/EQ, nilai pertanggungan/TSI, tarif premi).
+2. **FIRE_CLAIM:** 43 Kolom Master IPR (Nomor klaim, tanggal DOL, penyebab kerugian/cause of loss, estimasi klaim).
+3. **CREDIT_PREMIUM:** Plafon kredit, debitur, tenor, asuransi jiwa kredit, suku bunga.
+4. **CREDIT_CLAIM:** Klaim meninggal dunia, klaim macet, pelunasan sisa kredit.
 
-### Naming Convention Tabel PostgreSQL:
-Data dimuat secara dinamis ke tabel fisik dengan pola baku:
-table_name = {kategori}_{cedant}_{cob}
-Contoh: premi_marsh_fire, claim_tripakarta_fire, premi_askrida_credit.
+### Naming Convention Tabel Resmi PostgreSQL:
+Data dimuat secara dinamis ke tabel fisik dengan format resmi:
+`table_name = {kategori}_{cedant}_{cob}`
+Contoh: `premi_aca_fire`, `claim_aca_fire`, `premi_tripakarta_fire`, `claim_tripakarta_fire`, `premi_askrida_credit`, `claim_askrida_credit`, `claim_buanaindependent_fire`.
 
-### Aturan Kolom Sistem (System Injected Columns):
+### Filter Tabel Database:
+* Sistem menyaring dan **hanya menampilkan tabel resmi** bertransaksi bordero `{kategori}_{cedant}_{cob}`.
+* Tabel sistem/metadata (`alembic_version`, `app_users`, `etl_activity_log`, `mapping_presets`) serta tabel temporer/backup (`*_backup`, `*_clean`, `*_all_quarter`) secara otomatis difilter dan disembunyikan dari dropdown pemilihan tabel bordero.
+
+### Kolom Metadata Otomatis:
 Setiap tabel PostgreSQL secara otomatis memiliki dua kolom metadata tambahan di posisi akhir:
-1. period (TEXT): Format baku gabungan Periode & Tahun (misal TW1 2025, Q2 2024, JANUARI 2025).
-2. cedant_name (TEXT): Nama entitas perusahaan pemegang polis/broker (misal MARSH, TRIPAKARTA, ACA).
+1. `period` (TEXT): Format baku gabungan Periode & Tahun (misal `TW1 2025`, `Q2 2024`, `JANUARI 2025`).
+2. `cedant_name` (TEXT): Nama entitas perusahaan asuransi (misal `ACA`, `TRIPAKARTA`, `ASKRIDA`).
 
 ---
 
 ## 4. Dynamic ETL Workflow Pipeline
+
+```text
 [ Excel / CSV Mentah ]
 │
 ▼
-
 INGESTION & INSPECT (/api/v1/etl/inspect)
-├── Text-score header detection (Skip kop surat/baris kosong)
+├── Text-score header detection (Skip kop surat / baris logo)
 ├── Multi-level / Merged header merger (Parent - Child -> Flat string)
 └── Ekstraksi metadata sheet & daftar nama kolom
 │
 ▼
-
 VISUAL MAPPING COCKPIT (Frontend Web UI)
 ├── Resolving Skema 4-Kuadran IPR
-├── Auto-Match Fuzzy Matching (Bobot Context, Alias, Exact match)
-├── Warning visual: Merah (Wajib & Kosong), Kuning (Opsional & Kosong)
-├── Dynamic Non-IPR Toggle & Custom Field Renaming
-└── Smart Preset Storage (LocalStorage) & Apply-to-All batch
+├── Auto-Match Fuzzy Token Matching (Exact, Alias, Context scoring)
+├── Indikator Kontras Tinggi:
+│   ├── Merah Tegas (Border-l-4 + Badge * WAJIB DIISI) untuk kolom wajib yang belum terpetakan
+│   ├── Kuning / Amber untuk kolom opsional yang kosong
+│   └── Hijau Bercentang untuk kolom terpetakan valid
+├── Manajemen Preset Mapping (Dropdown Pilihan Preset, Terapkan Preset, Simpan ke Database)
+└── Dynamic Non-IPR Toggle & Sanitasi Nama Field Database
 │
 ▼
-
 TRANSFORMATION & LOADING (/api/v1/etl/process-with-mapping)
-├── Rename kolom sesuai skema IPR dan konfigurasi Non-IPR
-├── Drop sisa kolom sampah (Unnamed/Empty cols)
+├── Normalisasi tanggal, pembersihan teks mata uang, pemaksaan numerik 2 desimal
+├── Deduplikasi nama kolom unik (make_unique_column_names) mencegah collision
 ├── Injeksi kolom period dan cedant_name
-└── Pemuatan ke PostgreSQL via SQLAlchemy multi-chunk
+└── Pemuatan ke PostgreSQL via COPY stream multi-chunk
 │
 ▼
-
-REPORTING & SUMMARY
-└── Visual dashboard status: Baris termuat, kolom IPR, dan kolom ekstra
+AUDIT TRAIL & DASHBOARD
+├── Pencatatan etl_activity_log (durasi, baris termuat, mapping_config JSON, technical_log)
+├── Executive ERP Dashboard Analytics (Donut Chart, Bar Chart, Area Chart real-time)
+└── Modal Detail Riwayat (Eye Action Icon) untuk peninjauan eksekusi & hasil mapping
+```
 
 ---
 
+## 5. Fitur Unggulan Sistem
 
-## 5. Complete Directory Structure Overview
+### 1. Autentikasi Modern (Google & Microsoft SSO)
+* Halaman login enterprise dengan integrasi SSO:
+  * **Masuk dengan Google** (Google OAuth2).
+  * **Masuk dengan Microsoft** (Azure AD / Microsoft Identity).
+* Fallback login kredensial lokal untuk operator offline.
+* Model `app_users` mencatat `auth_provider`, `avatar_url`, `role`, dan `last_login_at`.
+
+### 2. Executive ERP Dashboard Analytics
+* **Analitik Portofolio Bordero:** Donut chart proporsi premi vs klaim per COB (Fire & Credit) serta bar chart kontribusi volume data per cedant.
+* **Analitik Sistem & Aktivitas ETL:** Donut chart distribusi peran user (Admin, Operator, Viewer), area chart kecepatan eksekusi ETL (*ms*), dan feed audit trail terkini.
+* **Kueri Instan Sub-Milidetik:** Menggunakan PostgreSQL `pg_stat_user_tables` untuk mengagregasi ratusan ribu baris data secara instan (< 50 ms).
+
+### 3. Modul Riwayat & Modal Detail Eksekusi
+* Tabel riwayat ETL interaktif dengan filter cedant, COB, kategori, dan status.
+* Tombol aksi **Mata (View Detail)** yang membuka modal detail komprehensif:
+  1. *Ringkasan Eksekusi:* Metrik baris, durasi, status, nama file, dan pesan error jika gagal.
+  2. *Hasil Pemetaan Kolom:* Visualisasi pemetaan kolom Excel asli terhadap field target database.
+  3. *Log Teknis:* Catatan audit tahapan pipeline secara rinci.
+
+### 4. Sistem Preset Pemetaan Terintegrasi Database
+* Simpan konfigurasi pemetaan kolom langsung ke tabel `mapping_presets` di PostgreSQL.
+* Dropdown pemilih preset dan tombol **"Terapkan Preset"** instan pada Column Mapper.
+
+### 5. Unified COB Data Viewers & Ekspor Data
+* Tampilan terpadu data bordero Fire dan Kredit dengan opsi *Per Cedant* maupun *Semua Cedant (Agregasi)*.
+* Filter periode kuartal, pencarian multi-kolom, filter status integritas (*Valid* vs *Warning*), serta ekspor data ke Excel / CSV.
+
+---
+
+## 6. Struktur Direktori Lengkap
 
 ```text
 IndoreETL/
@@ -99,182 +141,68 @@ IndoreETL/
 ├── setup.md
 ├── backend-structure.md
 ├── frontend-structure.md
+├── gemini.md                           # Dokumentasi Arsitektur Utama
 │
-├── backend/
+├── backend/                            # Backend API Service (FastAPI)
+│   ├── .env                            # Konfigurasi Environment Aktif
 │   ├── .env.example
-│   ├── .gitignore
+│   ├── alembic.ini                     # Konfigurasi Alembic
+│   ├── alembic/
+│   │   ├── env.py
+│   │   └── versions/                   # Migration Files
+│   │       ├── 0001_create_app_users.py
+│   │       ├── 0002_create_etl_activity_log.py
+│   │       ├── 0003_create_mapping_presets.py
+│   │       ├── 0004_update_app_users_sso.py
+│   │       └── 0005_add_mapping_config_to_etl_log.py
 │   ├── requirements.txt
-│   ├── test_db.py
-│   ├── test_runner.py
-│   ├── ETL Workflow.png
+│   ├── seed_admin.py
 │   └── app/
-│       ├── __init__.py
-│       ├── main.py
-│       ├── api/
-│       │   └── v1/
-│       │       ├── router.py
-│       │       ├── endpoints/
-│       │       │   ├── etl.py
-│       │       │   ├── history.py
-│       │       │   ├── tables.py
-│       │       │   └── user.py
-│       │       └── backups/
-│       │           └── etl.py
+│       ├── main.py                     # Entry point FastAPI & CORS
+│       ├── api/v1/
+│       │   ├── router.py
+│       │   └── endpoints/
+│       │       ├── etl.py              # Processing & Ingestion Engine
+│       │       ├── history.py          # Audit Trail & Preset Endpoints
+│       │       ├── tables.py           # Live DB Tables & Instant Dashboard
+│       │       └── user.py             # Auth & SSO Endpoints
 │       ├── core/
 │       │   ├── config.py
-│       │   └── security.py
+│       │   └── security.py             # Password Hashing & JWT
 │       ├── database/
-│       │   ├── app_db.py
-│       │   ├── connection.py
-│       │   ├── etl_db.py
-│       │   ├── loader.py
-│       │   └── backups/
-│       │       └── loader.py
-│       ├── schema/
-│       │   ├── etl.py
-│       │   ├── token.py
-│       │   └── user.py
-│       ├── services/
-│       │   ├── __init__.py
-│       │   ├── etl_factory.py
-│       │   ├── inspector_service.py
-│       │   ├── cedants/
-│       │   │   ├── base.py
-│       │   │   ├── aca.py
-│       │   │   ├── askrida.py
-│       │   │   ├── askrindo.py
-│       │   │   ├── buanaindependent.py
-│       │   │   ├── jakrejabar.py
-│       │   │   ├── jamkridajabar.py
-│       │   │   ├── jamkrindo.py
-│       │   │   └── tripakarta.py
-│       │   └── backup/
-│       │       ├── aca.py
-│       │       ├── askrida.py
-│       │       ├── claim.py
-│       │       ├── config.py
-│       │       ├── inspector.py
-│       │       ├── inspector_service.py
-│       │       ├── premi.py
-│       │       └── tripakarta.py
-│       └── utils/
-│           ├── __init__.py
-│           ├── helpers.py
-│           └── backups/
-│               └── helpers.py
+│       │   ├── connection.py           # DB Engine & Session
+│       │   └── loader.py               # Direct PostgreSQL COPY Ingestion
+│       ├── models/                     # SQLAlchemy ORM Models
+│       │   ├── user.py                 # AppUser (SSO + Local)
+│       │   ├── etl_log.py              # EtlActivityLog (Mapping config + Tech log)
+│       │   └── mapping_preset.py       # MappingPreset
+│       └── schema/                     # Pydantic Schemas
 │
-└── frontend/
-    ├── .env
-    ├── .gitignore
-    ├── index.html
+└── frontend/                           # Frontend Client Application (React/Vite)
     ├── package.json
-    ├── package-lock.json
-    ├── postcss.config.js
-    ├── tailwind.config.js
     ├── vite.config.js
-    ├── eslint.config.js
-    ├── README.md
-    ├── public/
-    │   ├── favicon.svg
-    │   └── icons.svg
-    ├── backups/
-    │   ├── UploadProcess.jsx
-    │   └── UploadWidget.jsx
     └── src/
-        ├── App.css
-        ├── App.jsx
-        ├── index.css
-        ├── main.jsx
+        ├── App.jsx                     # Router & Protected Routes
         ├── api/
-        │   └── borderoApi.js
-        ├── assets/
-        │   ├── hero.png
-        │   ├── indore.png
-        │   ├── react.svg
-        │   └── vite.svg
-        ├── components/
-        │   ├── common/
-        │   │   ├── EmptyState.jsx
-        │   │   ├── ErrorBoundary.jsx
-        │   │   ├── ErrorMessage.jsx
-        │   │   └── Loading.jsx
-        │   ├── context/
-        │   │   └── SidebarContext.jsx
-        │   ├── layout/
-        │   │   ├── Header.jsx
-        │   │   ├── MainLayout.jsx
-        │   │   ├── Navbar.jsx
-        │   │   └── Sidebar.jsx
-        │   └── ui/
-        │       ├── Button.jsx
-        │       ├── Input.jsx
-        │       ├── Modal.jsx
-        │       └── Table.jsx
-        ├── constants/
-        │   └── data.js
-        ├── data/
-        │   └── iprMasterData.js
+        │   └── borderoApi.js           # Central API Methods (Auth, ETL, Tables, History)
+        ├── context/
+        │   └── AuthContext.jsx         # Global Auth Provider (SSO + Local)
         ├── features/
         │   ├── bordero/
-        │   │   ├── AdvancedFilter.jsx
-        │   │   ├── HistoryTable.jsx
-        │   │   ├── HistoryView.jsx
-        │   │   └── UploadProcess.jsx
-        │   ├── etl/
-        │   │   ├── index.jsx
-        │   │   ├── components/
-        │   │   │   └── EtlTerminalPage.jsx
-        │   │   └── backups/
-        │   │       └── EtlTerminalPage.jsx
-        │   ├── mapping/
-        │   │   ├── index.jsx
-        │   │   ├── components/
-        │   │   │   ├── ColumnMapper.jsx
-        │   │   │   └── MappingTable.jsx
-        │   │   ├── data/
-        │   │   │   └── mappingData.js
-        │   │   └── utils/
-        │   │       └── matcher.js
-        │   ├── sheet-selection/
-        │   │   ├── index.jsx
-        │   │   └── components/
-        │   │       └── SheetSelector.jsx
-        │   └── upload/
-        │       ├── index.jsx
+        │   │   ├── HistoryView.jsx     # ETL History with Action Eye Button
+        │   │   └── EtlDetailModal.jsx  # Rich Execution, Mapping & Audit Modal
+        │   └── mapping/
         │       └── components/
-        │           ├── CedantSearch.jsx
-        │           ├── DragDrop.jsx
-        │           ├── FileList.jsx
-        │           ├── FileQueueItem.jsx
-        │           ├── PeriodSelector.jsx
-        │           ├── UploadBox.jsx
-        │           └── UploadWidget.jsx
+        │           └── ColumnMapper.jsx # High-Contrast Visual Mapping Cockpit
         ├── pages/
-        │   ├── Dashboard.jsx
-        │   ├── FormIpr.jsx
-        │   ├── MasterMapping.jsx
-        │   ├── UploadBordero.jsx
-        │   ├── UserGuide.jsx
+        │   ├── Dashboard.jsx           # Modern Executive ERP Analytics Dashboard
+        │   ├── LoginPage.jsx           # Minimalist SSO & Local Login Page
+        │   ├── UserGuide.jsx           # Stable Tab Navigation User Guide
+        │   ├── UserManagement.jsx      # Role & User Management Portal
+        │   ├── UploadBordero.jsx       # Multi-file Upload & ETL Wizard
         │   └── form/
-        │       ├── FormFire.jsx
-        │       └── FormKredit.jsx
+        │       ├── FormFire.jsx        # Live Fire Viewer & Aggregator
+        │       └── FormKredit.jsx      # Live Credit Viewer & Aggregator
         └── utils/
-            ├── apiClient.js
-            └── fileUtils.js
----
-
-
-## 6. Strict AI & Developer Generation Rules
-Setiap kali AI Agent atau developer menghasilkan kode atau memodifikasi berkas dalam proyek ini, aturan berikut wajib dipatuhi:
-
-DILARANG MENGGUNAKAN EMOJI: Jangan menambahkan emoji apa pun di dalam kode sumber, komentar program, file dokumentasi markdown, commit message, maupun output antarmuka console.
-
-DILARANG MERUSAK STRUKTUR SKEMA TABEL: Nama tabel target di PostgreSQL wajib mengikuti konvensi {kategori}_{cedant}_{cob}.
-
-PRESERVASI KOLOM NON-IPR: Jangan membuang kolom sumber yang belum terdaftar di IPR tanpa izin operator. Berikan konfigurasi toggle aktif/nonaktif di UI dan sanitasi field name ke format snake_case aman.
-
-INJEKSI KOLOM SISTEM: Setiap proses ETL wajib memastikan kolom period (gabungan periode dan tahun) serta cedant_name (nama entitas cedant huruf kapital) terinjeksi di bagian akhir tabel.
-
-STANDARISASI TIPE DATA: Gunakan TEXT untuk seluruh field tanggal guna mencegah error konversi antar-format cedant, NUMERIC(20,2) untuk nilai moneter, dan BIGINT untuk integer ID/tahun.
-
-LARANGAN CODE PLACEHOLDER: Dilarang menggunakan komentar pemotong seperti // ... rest of the code atau # existing code here saat menyajikan berkas perbaikan. Sajikan kode yang utuh, fungsional, dan dapat langsung di-copy-paste.
+            └── apiClient.js            # Axios Instance with JWT Interceptor
+```

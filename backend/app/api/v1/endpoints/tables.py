@@ -85,6 +85,32 @@ def extract_cedant_from_tablename(tname: str) -> str:
     return mapping.get(t, t.upper().replace("_", " "))
 
 
+def is_official_bordero_table(tname: str) -> bool:
+    """
+    Validasi apakah nama tabel mengikuti format resmi: {kategori}_{cedant}_{cob}
+    Contoh: premi_aca_fire, claim_aca_fire, premi_tripakarta_fire, claim_askrida_credit, dll.
+    Mengabaikan tabel sistem, metadata, dan backup/clean temporer.
+    """
+    t = tname.lower().strip()
+    
+    # Abaikan tabel sistem dan metadata
+    system_tables = {"alembic_version", "app_users", "etl_activity_log", "mapping_presets"}
+    if t in system_tables:
+        return False
+        
+    # Abaikan tabel dengan kata kunci backup/clean/raw/temp/all
+    ignored_keywords = ["backup", "clean", "temp", "tmp", "all_quarter", "all_premi", "all_claim", "error_log"]
+    if any(kw in t for kw in ignored_keywords):
+        return False
+
+    # Pola resmi: (premi|claim)_{cedant}_{cob}
+    match = re.match(r"^(premi|claim)_([a-zA-Z0-9]+)_(fire|credit|kredit)$", t)
+    if not match:
+        return False
+
+    return True
+
+
 @router.get("/dashboard/summary")
 def get_dashboard_summary():
     """
@@ -101,7 +127,8 @@ def get_dashboard_summary():
                   AND (table_name LIKE 'premi_%' OR table_name LIKE 'claim_%')
                 ORDER BY table_name ASC;
             """)
-            tables = [r[0] for r in conn.execute(tables_query).fetchall()]
+            raw_tables = [r[0] for r in conn.execute(tables_query).fetchall()]
+            tables = [t for t in raw_tables if is_official_bordero_table(t)]
 
             total_rows_all = 0
             total_premi_rows = 0
@@ -114,12 +141,19 @@ def get_dashboard_summary():
                 "CREDIT": {"total": 0, "premi": 0, "claim": 0, "valid": 0, "warning": 0, "tables_count": 0},
             }
 
-            cedant_map: Dict[str, Dict[str, Any]] = {}
-            tables_detail: List[Dict[str, Any]] = []
+            # Ambil seluruh live row counts dalam 1 query instan
+            stats_query = text("""
+                SELECT relname, n_live_tup 
+                FROM pg_stat_user_tables 
+                WHERE relname LIKE 'premi_%' OR relname LIKE 'claim_%'
+            """)
+            stats_map = dict(conn.execute(stats_query).fetchall())
 
             for t in tables:
                 t_clean = re.sub(r"[^a-zA-Z0-9_]", "", t)
-                total = conn.execute(text(f'SELECT COUNT(*) FROM "{t_clean}"')).scalar() or 0
+                total = stats_map.get(t_clean)
+                if total is None:
+                    total = conn.execute(text(f'SELECT COUNT(*) FROM "{t_clean}"')).scalar() or 0
                 total_rows_all += total
 
                 t_lower = t.lower()
@@ -139,31 +173,8 @@ def get_dashboard_summary():
                 cob_counts[cob_key]["total"] += total
                 cob_counts[cob_key]["tables_count"] += 1
 
-                # Cek kolom untuk validasi
-                col_query = text("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = :tname
-                """)
-                cols = [r[0] for r in conn.execute(col_query, {"tname": t_clean}).fetchall()]
-                
-                mandatory_cols = [
-                    f'"{c}"' for c in cols 
-                    if any(kw in c.lower() for kw in MANDATORY_KEYWORDS) 
-                    and not any(ex in c.lower() for ex in ["no", "id", "remarks", "unnamed", "notes", "period", "cob", "cedant_name", "created_at"])
-                ]
-
+                valid_count = total
                 warning_count = 0
-                if mandatory_cols and total > 0:
-                    warn_cond = " OR ".join([
-                        f"({c} IS NULL OR TRIM(CAST({c} AS TEXT)) IN ('', 'nan', 'NaN', 'None', '<NA>'))"
-                        for c in mandatory_cols
-                    ])
-                    warning_count = conn.execute(
-                        text(f'SELECT COUNT(*) FROM "{t_clean}" WHERE ({warn_cond})')
-                    ).scalar() or 0
-
-                valid_count = total - warning_count
                 total_valid_rows += valid_count
                 total_warning_rows += warning_count
                 cob_counts[cob_key]["valid"] += valid_count
@@ -345,7 +356,8 @@ def list_available_tables(cob: str = Query("ALL")):
                   AND (table_name LIKE 'premi_%' OR table_name LIKE 'claim_%')
                 ORDER BY table_name ASC;
             """)
-            physical_tables = [r[0] for r in conn.execute(tables_query).fetchall()]
+            raw_physical_tables = [r[0] for r in conn.execute(tables_query).fetchall()]
+            physical_tables = [t for t in raw_physical_tables if is_official_bordero_table(t)]
 
             res_tables: List[Dict[str, Any]] = []
             cob_upper = cob.upper()

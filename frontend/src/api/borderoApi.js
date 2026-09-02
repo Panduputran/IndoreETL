@@ -127,6 +127,16 @@ export async function loginUser(username, password) {
   }
 }
 
+export async function loginSSOUser(payload) {
+  try {
+    const response = await apiClient.post('/auth/sso', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Gagal login SSO:', error);
+    throw error;
+  }
+}
+
 export async function getCurrentUser() {
   try {
     const response = await apiClient.get('/auth/me');

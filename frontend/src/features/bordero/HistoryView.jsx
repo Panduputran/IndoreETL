@@ -7,10 +7,12 @@ import {
   AlertTriangle, 
   Database, 
   Layers, 
-  Clock 
+  Clock,
+  Eye
 } from 'lucide-react';
 import { getHistoryLogs } from '../../api/borderoApi';
 import { CEDANTS } from '../../constants/data';
+import EtlDetailModal from './EtlDetailModal';
 
 export default function HistoryView() {
   const [logs, setLogs] = useState([]);
@@ -18,6 +20,10 @@ export default function HistoryView() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRows, setTotalRows] = useState(0);
+
+  // Modal State
+  const [selectedDetailLog, setSelectedDetailLog] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Filter States
   const [selectedCedant, setSelectedCedant] = useState('ALL');
@@ -231,19 +237,20 @@ export default function HistoryView() {
                 <th className="py-3.5 px-5 text-right">Baris Data</th>
                 <th className="py-3.5 px-5 text-right">Durasi</th>
                 <th className="py-3.5 px-5 text-center">Status</th>
+                <th className="py-3.5 px-5 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={10} className="py-16 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
                     Memuat data riwayat...
                   </td>
                 </tr>
               ) : displayedLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400 italic">
+                  <td colSpan={10} className="py-16 text-center text-slate-400 italic">
                     Belum ada riwayat aktivitas ETL yang sesuai dengan filter.
                   </td>
                 </tr>
@@ -299,6 +306,21 @@ export default function HistoryView() {
                           <span>{isSuccess ? 'Sukses' : 'Gagal'}</span>
                         </span>
                       </td>
+
+                      <td className="py-3.5 px-5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDetailLog(log);
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                          title="Lihat Detail Eksekusi & Hasil Mapping"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Detail</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -331,6 +353,16 @@ export default function HistoryView() {
           </div>
         </div>
       </div>
+
+      {/* Detail Modal */}
+      <EtlDetailModal
+        log={selectedDetailLog}
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedDetailLog(null);
+        }}
+      />
     </div>
   );
 }

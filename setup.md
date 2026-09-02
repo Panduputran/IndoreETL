@@ -100,7 +100,7 @@ JWT_EXPIRE_MINUTES=480
 ```
 
 ### 6. Jalankan Database Migration (Alembic)
-Jalankan migrasi untuk membuat tabel sistem (`app_users`, `etl_activity_log`, `mapping_presets`):
+Jalankan migrasi untuk membuat dan memperbarui tabel sistem (`app_users` dengan dukungan SSO, `etl_activity_log` dengan konfigurasi mapping, dan `mapping_presets`):
 ```powershell
 alembic upgrade head
 ```
@@ -110,7 +110,7 @@ Jalankan script seeder untuk membuat akun admin pertama:
 ```powershell
 python seed_admin.py
 ```
-*(Akun default: Username: `admin`, Password: `admin123`)*
+*(Akun default: Username: `admin`, Password: `admin123`. Selain itu, Anda juga dapat langsung masuk menggunakan akun Google atau Microsoft Single Sign-On).*
 
 ### 8. Jalankan Server Backend
 Jalankan server pengembangan FastAPI dengan hot-reload:

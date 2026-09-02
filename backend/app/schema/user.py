@@ -15,6 +15,13 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class UserSSOLogin(BaseModel):
+    provider: str = Field(..., pattern="^(google|microsoft)$")
+    email: str = Field(..., description="Email resmi dari SSO provider")
+    full_name: str = Field(..., description="Nama lengkap user dari SSO")
+    avatar_url: Optional[str] = None
+    id_token: Optional[str] = None
+
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[str] = Field(None, pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
@@ -24,6 +31,8 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    auth_provider: str = "local"
+    avatar_url: Optional[str] = None
     is_active: bool
     created_at: datetime
     last_login_at: Optional[datetime] = None

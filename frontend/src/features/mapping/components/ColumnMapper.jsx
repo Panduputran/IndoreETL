@@ -413,7 +413,7 @@ export default function ColumnMapper({
         </div>
       )}
 
-      {/* Tabel 1: Format Standar IPR */}
+      {/* Tabel 1: Format Standar IPR dengan Peningkatan Kontras Visual */}
       <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
         <table className="w-full text-left border-collapse font-sans text-sm">
           <thead>
@@ -430,22 +430,47 @@ export default function ColumnMapper({
               const isMapped = Boolean(selectedValue);
               const isRequired = targetCol.required;
 
-              const rowClass = isMapped
-                ? 'hover:bg-slate-50/50'
-                : isRequired
-                ? 'bg-rose-50/20 hover:bg-rose-50/30'
-                : 'bg-amber-50/15 hover:bg-amber-50/25';
+              // High-Contrast Visual Styling Classes
+              let rowClass = '';
+              let selectClass = '';
+              let badgeElement = null;
+
+              if (isMapped) {
+                rowClass = 'bg-emerald-50/15 hover:bg-emerald-50/25 border-l-4 border-l-emerald-500';
+                selectClass = 'w-full py-2 px-3 bg-white rounded-xl text-sm outline-none border border-emerald-300 focus:border-blue-500 text-slate-800 font-medium transition-colors cursor-pointer';
+                badgeElement = (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-medium text-xs shrink-0 border border-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Terpetakan</span>
+                  </span>
+                );
+              } else if (isRequired) {
+                // REQUIRED & UNMAPPED -> HIGH CONTRAST BOLD RED
+                rowClass = 'bg-rose-50/80 hover:bg-rose-100/70 border-l-4 border-l-rose-500';
+                selectClass = 'w-full py-2 px-3 bg-white rounded-xl text-sm outline-none border-2 border-rose-400 focus:border-rose-600 focus:ring-2 focus:ring-rose-200 text-slate-800 font-medium transition-colors cursor-pointer shadow-2xs';
+                badgeElement = (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 font-bold text-xs shrink-0 border border-rose-300 flex items-center gap-1 shadow-2xs">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                    <span>* WAJIB DIISI</span>
+                  </span>
+                );
+              } else {
+                // OPTIONAL & UNMAPPED -> AMBER / YELLOW
+                rowClass = 'bg-amber-50/30 hover:bg-amber-50/50 border-l-4 border-l-amber-400';
+                selectClass = 'w-full py-2 px-3 bg-white rounded-xl text-sm outline-none border border-slate-200 focus:border-blue-500 text-slate-600 transition-colors cursor-pointer';
+                badgeElement = (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-medium text-xs shrink-0 border border-amber-200">
+                    Opsional (Kosong)
+                  </span>
+                );
+              }
 
               return (
                 <tr key={targetCol.dbField} className={`transition-colors ${rowClass}`}>
                   <td className="py-3.5 px-4 border-r border-slate-100">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-slate-800">{targetCol.iprLabel}</span>
-                      {isRequired ? (
-                        <span className="text-rose-600 font-medium text-xs shrink-0">* Wajib</span>
-                      ) : (
-                        <span className="text-slate-400 text-xs shrink-0">Opsional</span>
-                      )}
+                      <span className="font-semibold text-slate-800">{targetCol.iprLabel}</span>
+                      {badgeElement}
                     </div>
                   </td>
 
@@ -453,9 +478,9 @@ export default function ColumnMapper({
                     <select
                       value={selectedValue}
                       onChange={(e) => handleSelectField(targetCol.dbField, e.target.value)}
-                      className="w-full py-2 px-3 bg-white rounded-xl text-sm outline-none border border-slate-200 focus:border-blue-500 transition-colors cursor-pointer text-slate-700"
+                      className={selectClass}
                     >
-                      <option value="">-- Lewati / Kosongkan --</option>
+                      <option value="">-- Pilih Kolom Excel --</option>
                       {safeSourceColumns.map((col, idx) => (
                         <option key={idx} value={col}>
                           {col}
@@ -465,7 +490,7 @@ export default function ColumnMapper({
                   </td>
 
                   <td className="py-3.5 px-4 border-r border-slate-100">
-                    <span className="font-mono text-xs text-slate-600 truncate block">
+                    <span className="font-mono text-xs text-slate-700 font-medium truncate block">
                       {targetCol.dbField}
                     </span>
                   </td>
@@ -486,7 +511,7 @@ export default function ColumnMapper({
       {unmappedSourceColumns.length > 0 && (
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
-            <h4 className="font-medium text-slate-800 text-sm flex items-center gap-2">
+            <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
               <PlusCircle className="w-4 h-4 text-slate-500" /> Kolom Tambahan Sumber (Non-IPR)
             </h4>
             <span className="text-xs text-slate-400">{unmappedSourceColumns.length} kolom ekstra terdeteksi</span>
@@ -526,7 +551,7 @@ export default function ColumnMapper({
                         </button>
                       </td>
 
-                      <td className="py-3.5 px-4 border-r border-slate-100 text-slate-800">
+                      <td className="py-3.5 px-4 border-r border-slate-100 text-slate-800 font-medium">
                         {col}
                       </td>
 

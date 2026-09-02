@@ -315,6 +315,22 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
             # 7. Catat Log Aktivitas
             try:
                 file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                mapping_config_json = json.dumps({
+                    "ipr_mapping": file_info.column_mapping or {},
+                    "non_ipr_mapping": file_info.non_ipr_mapping or {},
+                    "selected_sheet": file_info.selected_sheet,
+                    "total_source_columns": len(df_raw.columns) if 'df_raw' in locals() else 0,
+                    "total_target_columns": len(df_transformed.columns) if 'df_transformed' in locals() else 0,
+                })
+                technical_log_text = (
+                    f"[START] Memulai pemrosesan berkas: {file_info.file_id}\n"
+                    f"[INSPECT] Sheet terpilih: {file_info.selected_sheet or 'Default'}\n"
+                    f"[TRANSFORM] Berhasil memetakan {len([k for k, v in (file_info.column_mapping or {}).items() if v])} kolom IPR dan {len(active_non_ipr_columns)} kolom Non-IPR.\n"
+                    f"[CLEAN] Sanitasi data numerik, tanggal, dan teks mata uang selesai.\n"
+                    f"[LOAD] Injeksi {rows_loaded} baris ke tabel PostgreSQL '{target_table_name}' berhasil dalam {duration_ms} ms.\n"
+                    f"[STATUS] Eksekusi pipeline tuntas dengan status SUCCESS."
+                )
+
                 with SessionLocal() as db_session:
                     log_entry = EtlActivityLog(
                         cedant_code=payload.cedant_code.lower(),
@@ -328,6 +344,8 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                         rows_inserted=rows_loaded,
                         status="success",
                         duration_ms=duration_ms,
+                        mapping_config=mapping_config_json,
+                        technical_log=technical_log_text,
                     )
                     db_session.add(log_entry)
                     db_session.commit()

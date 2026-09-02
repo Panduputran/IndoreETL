@@ -73,6 +73,8 @@ def get_etl_logs(
                     "status": log.status,
                     "error_message": log.error_message,
                     "duration_ms": log.duration_ms,
+                    "mapping_config": log.mapping_config,
+                    "technical_log": log.technical_log,
                     "executed_at": log.executed_at.isoformat() if log.executed_at else None,
                 }
                 for log in logs

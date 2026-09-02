@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 import { Link } from 'react-router-dom';
 import { 
   Building2, 
@@ -60,7 +60,7 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('http://localhost:8000/api/v1/tables/dashboard/summary');
+      const res = await apiClient.get('/tables/dashboard/summary');
       if (res.data?.status === 'success') {
         setSummaryData({
           total_batches: res.data.total_batches || 0,

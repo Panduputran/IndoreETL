@@ -20,6 +20,8 @@ class EtlActivityLog(Base):
     status = Column(String(20), default="success", nullable=False)  # "success" | "failed"
     error_message = Column(Text, nullable=True)
     duration_ms = Column(Integer, nullable=True)
+    mapping_config = Column(Text, nullable=True)  # JSON representation of column mappings used
+    technical_log = Column(Text, nullable=True)   # Step-by-step diagnostic audit log
     executed_at = Column(DateTime, server_default=func.now(), nullable=False, index=True)
 
     # Relationship to user
