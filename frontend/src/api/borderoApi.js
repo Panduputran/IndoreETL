@@ -142,6 +142,21 @@ export async function getHistoryLogs(params = {}) {
   }
 }
 
+export async function getHistoryStatistics() {
+  const cacheKey = 'history_statistics_summary';
+  const cached = getCached(cacheKey, 20000); // 20 detik TTL
+  if (cached) return cached;
+
+  try {
+    const response = await apiClient.get('/history/stats');
+    setCached(cacheKey, response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Gagal mengambil statistik riwayat:', error);
+    throw error;
+  }
+}
+
 export async function getMappingPresets(params = {}) {
   const cacheKey = `mapping_presets_${JSON.stringify(params)}`;
   const cached = getCached(cacheKey, 30000); // 30 detik TTL

@@ -7,6 +7,8 @@ class EtlActivityLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("app_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    uploaded_by = Column(String(120), nullable=True, index=True)  # Username/Email operator pengunggah
+    user_role = Column(String(20), nullable=True, default="operator")  # "admin" | "operator" | "viewer"
     cedant_code = Column(String(50), nullable=False, index=True)
     cedant_name = Column(String(150), nullable=True)
     cob = Column(String(30), nullable=False, index=True)

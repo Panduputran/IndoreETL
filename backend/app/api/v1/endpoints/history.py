@@ -60,6 +60,10 @@ def get_etl_logs(
                 {
                     "id": log.id,
                     "user_id": log.user_id,
+                    "uploaded_by": log.uploaded_by or (log.user.full_name if log.user else (log.user.username if log.user else "Administrator")),
+                    "user_email": log.user.email if log.user else None,
+                    "user_role": log.user_role or (log.user.role if log.user else "operator"),
+                    "user_avatar": log.user.avatar_url if log.user else None,
                     "cedant_code": log.cedant_code,
                     "cedant_name": log.cedant_name,
                     "cob": log.cob,
@@ -82,6 +86,76 @@ def get_etl_logs(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal mengambil log aktivitas ETL: {str(e)}")
+
+
+@router.get("/stats", summary="Get Aggregated History & User Upload Statistics")
+def get_history_statistics(db: Session = Depends(get_db)):
+    """
+    Mengambil metrik statistik riwayat eksekusi ETL & rekap aktivitas per operator/user.
+    """
+    try:
+        total_runs = db.query(func.count(EtlActivityLog.id)).scalar() or 0
+        success_runs = db.query(func.count(EtlActivityLog.id)).filter(EtlActivityLog.status == "success").scalar() or 0
+        failed_runs = db.query(func.count(EtlActivityLog.id)).filter(EtlActivityLog.status == "failed").scalar() or 0
+        total_rows_inserted = db.query(func.sum(EtlActivityLog.rows_inserted)).scalar() or 0
+        
+        # Rekap aktivitas per user / operator
+        user_stats = (
+            db.query(
+                func.coalesce(EtlActivityLog.uploaded_by, "Administrator").label("uploader"),
+                func.coalesce(EtlActivityLog.user_role, "operator").label("role"),
+                func.count(EtlActivityLog.id).label("total_runs"),
+                func.sum(EtlActivityLog.rows_inserted).label("total_rows")
+            )
+            .group_by(EtlActivityLog.uploaded_by, EtlActivityLog.user_role)
+            .order_by(desc(func.count(EtlActivityLog.id)))
+            .all()
+        )
+        
+        # Rekap volume per cedant
+        cedant_stats = (
+            db.query(
+                EtlActivityLog.cedant_name,
+                func.count(EtlActivityLog.id).label("runs"),
+                func.sum(EtlActivityLog.rows_inserted).label("rows")
+            )
+            .filter(EtlActivityLog.cedant_name.isnot(None))
+            .group_by(EtlActivityLog.cedant_name)
+            .order_by(desc(func.sum(EtlActivityLog.rows_inserted)))
+            .limit(6)
+            .all()
+        )
+
+        return {
+            "status": "success",
+            "data": {
+                "total_runs": total_runs,
+                "success_runs": success_runs,
+                "failed_runs": failed_runs,
+                "success_rate": round((success_runs / total_runs * 100), 1) if total_runs > 0 else 100.0,
+                "total_rows_inserted": int(total_rows_inserted or 0),
+                "total_operators": len(user_stats),
+                "user_activity": [
+                    {
+                        "uploader": r.uploader,
+                        "role": r.role,
+                        "total_runs": r.total_runs,
+                        "total_rows": int(r.total_rows or 0),
+                    }
+                    for r in user_stats
+                ],
+                "cedant_activity": [
+                    {
+                        "cedant": r.cedant_name or "Unknown",
+                        "runs": r.runs,
+                        "rows": int(r.rows or 0)
+                    }
+                    for r in cedant_stats
+                ]
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mengambil statistik riwayat: {str(e)}")
 
 
 @router.get("/presets", summary="Get Saved Column Mapping Presets")

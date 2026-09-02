@@ -73,6 +73,9 @@ class EtlMappingRequest(BaseModel):
     cedant_code: str
     cedant_name: Optional[str] = None
     activity_title: Optional[str] = "BATCH-ETL"
+    user_id: Optional[int] = None
+    uploaded_by: Optional[str] = None
+    user_role: Optional[str] = None
     files: List[FileMappingPayload]
 
 
@@ -313,8 +316,14 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                     f"[STATUS] Eksekusi pipeline tuntas dengan status SUCCESS."
                 )
 
+                user_label = str(payload.uploaded_by or "Administrator").strip()
+                user_role_label = str(payload.user_role or "operator").strip()
+
                 with SessionLocal() as db_session:
                     log_entry = EtlActivityLog(
+                        user_id=payload.user_id,
+                        uploaded_by=user_label,
+                        user_role=user_role_label,
                         cedant_code=payload.cedant_code.lower(),
                         cedant_name=cedant_label,
                         cob=clean_cob.upper(),
@@ -353,8 +362,11 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
         try:
             with SessionLocal() as db_session:
                 err_entry = EtlActivityLog(
-                    cedant_code=payload.cedant_code.lower(),
-                    cedant_name=str(payload.cedant_name or payload.cedant_code).upper().strip(),
+                    user_id=payload.user_id if 'payload' in locals() else None,
+                    uploaded_by=str(getattr(payload, 'uploaded_by', 'Administrator')).strip() if 'payload' in locals() else 'Administrator',
+                    user_role=str(getattr(payload, 'user_role', 'operator')).strip() if 'payload' in locals() else 'operator',
+                    cedant_code=payload.cedant_code.lower() if 'payload' in locals() else 'error',
+                    cedant_name=str(getattr(payload, 'cedant_name', getattr(payload, 'cedant_code', 'ERROR'))).upper().strip() if 'payload' in locals() else 'ERROR',
                     cob="UNKNOWN",
                     category="claim",
                     target_table="error_log",

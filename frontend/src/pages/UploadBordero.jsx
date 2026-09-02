@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import UploadWidget from '../features/upload/components/UploadWidget';
 import ColumnMapper from '../features/mapping/components/ColumnMapper';
 import { getIprSchema } from '../data/iprMasterData';
@@ -27,6 +28,7 @@ import {
 
 export default function UploadBordero() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState('UPLOAD');
   const [uploadPayload, setUploadPayload] = useState(null);
   const [fileMappings, setFileMappings] = useState({});
@@ -121,6 +123,9 @@ export default function UploadBordero() {
         cedant_code: uploadPayload.cedant?.code || 'CEDANT',
         cedant_name: uploadPayload.cedant?.name || uploadPayload.cedant?.code?.toUpperCase() || 'CEDANT',
         activity_title: uploadPayload.activityTitle || 'BATCH-ETL',
+        user_id: user?.id || null,
+        uploaded_by: user?.full_name || user?.username || user?.email || 'Administrator',
+        user_role: user?.role || 'operator',
         files: formattedFiles,
       };
 

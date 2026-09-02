@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../utils/apiClient';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   Building2, 
   Layers, 
@@ -39,6 +40,7 @@ import {
 } from 'recharts';
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [summaryData, setSummaryData] = useState({
     total_batches: 0,
@@ -159,11 +161,18 @@ export default function Dashboard() {
       {/* 1. Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Dashboard Analytics
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              Dashboard Analytics
+            </h1>
+            {user && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                Halo, {user.full_name?.split(' ')[0] || user.username}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500 mt-1">
-            Monitoring terintegrasi analitik portofolio bordero reasuransi dan metrik operasional sistem.
+            Ringkasan data bordero, aktivitas ETL, dan kondisi sistem per hari ini.
           </p>
         </div>
 
@@ -242,7 +251,7 @@ export default function Dashboard() {
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-xs font-medium text-slate-500 uppercase tracking-wider block mb-1">
-                Kualitas Integritas Data
+                Integritas Data
               </span>
               <span className="text-2xl font-bold text-emerald-600">
                 {validPercentage}%
@@ -539,7 +548,7 @@ export default function Dashboard() {
           <div className="p-5 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold text-slate-800">Aktivitas ETL Terbaru</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Jejak audit eksekusi pemuatan data ke PostgreSQL</p>
+              <p className="text-xs text-slate-400 mt-0.5">Catatan eksekusi pemuatan data ke database</p>
             </div>
             <Link
               to="/history"
@@ -559,7 +568,7 @@ export default function Dashboard() {
                   <th className="py-3 px-5 text-center">Lini Bisnis</th>
                   <th className="py-3 px-5 text-center">Kategori</th>
                   <th className="py-3 px-5">Tabel Target</th>
-                  <th className="py-3 px-5 text-right">Baris Injeksi</th>
+                  <th className="py-3 px-5 text-right">Baris Dimuat</th>
                   <th className="py-3 px-5 text-right">Durasi</th>
                   <th className="py-3 px-5 text-center">Status</th>
                 </tr>
@@ -597,7 +606,9 @@ export default function Dashboard() {
                         {(l.rows || 0).toLocaleString('id-ID')}
                       </td>
                       <td className="py-3 px-5 text-right text-slate-400 font-mono text-xs">
-                        {l.duration_ms ? `${l.duration_ms} ms` : '-'}
+                        {l.duration_ms 
+                          ? (l.duration_ms >= 1000 ? `${(l.duration_ms / 1000).toFixed(1)}s` : `${l.duration_ms}ms`)
+                          : '-'}
                       </td>
                       <td className="py-3 px-5 text-center">
                         <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium ${
@@ -679,9 +690,9 @@ export default function Dashboard() {
                       <td className="py-3.5 px-5 text-center">
                         <Link
                           to={targetPath}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                         >
-                          <span>Buka Data</span>
+                          <span>Lihat Data</span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </Link>
                       </td>

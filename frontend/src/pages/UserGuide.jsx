@@ -82,7 +82,7 @@ export default function UserGuide() {
     { id: 'workflow', label: 'Alur Kerja Pipeline' },
     { id: 'aggregation', label: 'Agregasi Multi-Cedant' },
     { id: 'validation', label: 'Aturan Validasi' },
-    { id: 'faq', label: 'Tanya Jawab (FAQ)' },
+    { id: 'faq', label: 'Pertanyaan Umum' },
   ];
 
   return (
@@ -91,24 +91,24 @@ export default function UserGuide() {
       {/* Header Halaman */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-          User Guide
+          Panduan Penggunaan
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Dokumentasi operasional end-to-end sistem otomasi ETL Bordero, integrasi skema IPR, dan pemantauan data reasuransi.
+          Alur kerja, fitur agregasi, dan referensi operasional sistem ETL bordero reasuransi.
         </p>
       </div>
 
-      {/* Quick Navigation Tabs with stable layout */}
-      <div className="flex items-center gap-2.5 border-b border-slate-200/80 pb-4 overflow-x-auto">
+      {/* Clean Underline Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer whitespace-nowrap border ${
+            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer whitespace-nowrap ${
               activeTab === tab.id
-                ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             {tab.label}
@@ -123,29 +123,29 @@ export default function UserGuide() {
           <div className="space-y-4 animate-in fade-in duration-150">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {steps.map((item, idx) => (
-                <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between">
+                <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 flex flex-col justify-between hover:border-blue-200 transition-colors">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100">
                         {item.icon}
                       </div>
-                      <span className="font-mono font-bold text-slate-300 text-xl">{item.step}</span>
+                      <span className="font-mono font-bold text-slate-300 text-lg">{item.step}</span>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-slate-800 text-base">{item.title}</h3>
-                      <p className="text-slate-500 text-sm leading-relaxed mt-2">{item.desc}</p>
+                      <h3 className="font-semibold text-slate-800 text-sm">{item.title}</h3>
+                      <p className="text-slate-500 text-xs leading-relaxed mt-1.5">{item.desc}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-5 flex items-start gap-3.5 text-blue-900">
-              <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-              <div className="space-y-1 text-sm">
-                <p className="font-medium">Tips Penanganan Berkas Heterogen:</p>
+            <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-4 flex items-start gap-3 text-blue-900">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5 text-xs">
+                <p className="font-semibold text-blue-950">Catatan Format Berkas:</p>
                 <p className="text-blue-700 leading-relaxed">
-                  Jika berkas Excel dari cedant memiliki banyak baris judul atau logo perusahaan di bagian atas, parser otomatis akan mendeteksi baris offset header secara mandiri. Pastikan lembar kerja (sheet) target telah terpilih dengan benar pada tahap inspeksi.
+                  Bila berkas Excel memiliki baris judul atau logo di bagian atas, sistem secara otomatis mendeteksi baris offset header. Pastikan lembar kerja (sheet) target dipilih dengan tepat pada tahap inspeksi.
                 </p>
               </div>
             </div>
@@ -233,9 +233,9 @@ export default function UserGuide() {
         {activeTab === 'faq' && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 animate-in fade-in duration-150">
             <div>
-              <h3 className="font-semibold text-slate-800 text-base">Tanya Jawab Seputar Sistem (FAQ)</h3>
-              <p className="text-slate-500 text-sm mt-1">
-                Pertanyaan umum mengenai alur pemrosesan bordero dan pengelolaan database reasuransi.
+              <h3 className="font-semibold text-slate-800 text-base">Pertanyaan yang Sering Diajukan</h3>
+              <p className="text-slate-500 text-xs mt-1">
+                Jawaban seputar alur kerja, validasi, dan pengelolaan bordero.
               </p>
             </div>
 
