@@ -63,5 +63,5 @@ export const NAV_LINKS = [
   { key: 'bordero-fire', label: 'Bordero Fire', path: '/form/form-fire' },
   { key: 'bordero-kredit', label: 'Bordero Kredit', path: '/form/form-kredit' },
   { key: 'master-mapping', label: 'Master Mapping', path: '/master/mapping' },
-  { key: 'master-ipr', label: 'IPR Schema Master', path: '/form-ipr' }
+  { key: 'master-ipr', label: 'IPR Format', path: '/form-ipr' }
 ];

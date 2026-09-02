@@ -91,10 +91,10 @@ export default function UserGuide() {
       {/* Header Halaman */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-          Panduan Penggunaan
+          User Guide
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Alur kerja, fitur agregasi, dan referensi operasional sistem ETL bordero reasuransi.
+          Panduan alur kerja, fitur agregasi, dan referensi operasional sistem ETL bordero reasuransi.
         </p>
       </div>
 

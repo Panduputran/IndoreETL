@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import indoreLogo from '../../assets/indore.png';
-import { useAuth } from '../../context/AuthContext';
 import { 
   LayoutDashboard, 
   UploadCloud, 
@@ -13,14 +12,11 @@ import {
   HelpCircle, 
   Users,
   ChevronDown,
-  Terminal,
-  User,
-  Shield
+  Terminal
 } from 'lucide-react';
 
 export default function Sidebar({ isBlocked = false }) {
   const location = useLocation();
-  const { user, isAuthenticated } = useAuth();
   const [openDropdown, setOpenDropdown] = useState('');
 
   const menuItems = [
@@ -42,18 +38,18 @@ export default function Sidebar({ isBlocked = false }) {
       icon: Table2,
       subItems: [
         { id: 'fire', label: 'Bordero FIRE', path: '/form/form-fire' },
-        { id: 'credit', label: 'Bordero Kredit', path: '/form/form-kredit' }
+        { id: 'credit', label: 'Bordero Credit', path: '/form/form-kredit' }
       ]
     },
     {
       id: 'validasi-bordero',
-      label: 'Validasi Bordero',
+      label: 'Validation Bordero',
       path: '/validasi-bordero',
       icon: ShieldCheck,
     },
     {
       id: 'history',
-      label: 'Riwayat ETL',
+      label: 'ETL History',
       path: '/history',
       icon: History,
     },
@@ -67,7 +63,7 @@ export default function Sidebar({ isBlocked = false }) {
     },
     { 
       id: 'form-ipr', 
-      label: 'Kamus IPR', 
+      label: 'IPR Format', 
       path: '/form-ipr', 
       icon: BookOpen,
     },
@@ -107,7 +103,7 @@ export default function Sidebar({ isBlocked = false }) {
       {/* Navigasi Menu */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         <div>
-          <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Menu Utama</p>
+          <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Main Menu</p>
           <nav className="space-y-1">
             {menuItems.map((item) => {
               const IconComp = item.icon;
@@ -188,7 +184,7 @@ export default function Sidebar({ isBlocked = false }) {
 
         {/* Menu Lainnya */}
         <div>
-          <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Lainnya</p>
+          <p className="px-3 text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Others</p>
           <nav className="space-y-1">
             {secondaryItems.map((link) => {
               const IconComp = link.icon;
@@ -219,35 +215,6 @@ export default function Sidebar({ isBlocked = false }) {
           </nav>
         </div>
       </div>
-
-      {/* User Context Footer (RBAC) */}
-      {isAuthenticated && user && (
-        <div className="p-3 border-t border-slate-200/70 bg-white/70">
-          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-slate-50/80 border border-slate-200/60">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-              (user.role || '').toLowerCase() === 'admin'
-                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                : 'bg-blue-100 text-blue-700 border border-blue-200'
-            }`}>
-              {(user.full_name || user.username || 'U').charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="text-xs font-semibold text-slate-800 block truncate leading-tight">
-                {user.full_name || user.username}
-              </span>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                  (user.role || '').toLowerCase() === 'admin'
-                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                    : 'bg-blue-50 text-blue-700 border border-blue-200'
-                }`}>
-                  {user.role || 'Operator'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

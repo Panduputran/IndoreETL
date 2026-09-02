@@ -86,7 +86,7 @@ export default function UserManagement() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Manajemen Pengguna
+            User Management
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             Kelola akun pengguna, peran otorisasi, dan hak akses portal ETL IndonesiaRe.

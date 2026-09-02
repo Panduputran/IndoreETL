@@ -207,7 +207,7 @@ export default function HistoryView() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <History className="w-5 h-5 text-blue-600 shrink-0" />
-            <span>Audit Trail & Riwayat Aktivitas ETL</span>
+            <span>ETL Activity History & Audit Trail</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Catatan historis seluruh proses transformasi data bordero, status pemuatan PostgreSQL, dan atribusi operator.

@@ -34,15 +34,15 @@ export default function MainLayout() {
   const getPageTitle = () => {
     const path = location.pathname;
     if (path.includes('/dashboard')) return 'Dashboard Analytics';
-    if (path.includes('/upload')) return 'Unggah Bordero';
-    if (path.includes('/form/form-fire')) return 'Data Bordero — FIRE';
-    if (path.includes('/form/form-kredit')) return 'Data Bordero — Kredit';
-    if (path.includes('/validasi-bordero')) return 'Validasi Bordero';
-    if (path.includes('/history')) return 'Riwayat & Audit Trail';
-    if (path.includes('/users')) return 'Manajemen Pengguna';
-    if (path.includes('/master/mapping')) return 'Master Mapping Kolom';
-    if (path.includes('/form-ipr')) return 'Standar Kolom IPR';
-    if (path.includes('/user-guide')) return 'Panduan Penggunaan';
+    if (path.includes('/upload')) return 'Upload Bordero';
+    if (path.includes('/form/form-fire')) return 'Bordero Data — FIRE';
+    if (path.includes('/form/form-kredit')) return 'Bordero Data — Credit';
+    if (path.includes('/validasi-bordero')) return 'Validation Bordero';
+    if (path.includes('/history')) return 'ETL History & Audit Trail';
+    if (path.includes('/users')) return 'User Management';
+    if (path.includes('/master/mapping')) return 'Master Mapping';
+    if (path.includes('/form-ipr')) return 'IPR Format';
+    if (path.includes('/user-guide')) return 'User Guide';
     return 'Treaty Management System';
   };
 
