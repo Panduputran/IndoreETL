@@ -1,9 +1,11 @@
-# app/api/v1/endpoints/tables.py
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import text
-from app.database.connection import engine
+import csv
+import io
 import re
 from typing import Dict, List, Any
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import text
+from app.database.connection import engine
 
 
 router = APIRouter()
@@ -140,6 +142,8 @@ def get_dashboard_summary():
                 "FIRE": {"total": 0, "premi": 0, "claim": 0, "valid": 0, "warning": 0, "tables_count": 0},
                 "CREDIT": {"total": 0, "premi": 0, "claim": 0, "valid": 0, "warning": 0, "tables_count": 0},
             }
+            cedant_map = {}
+            tables_detail = []
 
             # Ambil seluruh live row counts dalam 1 query instan
             stats_query = text("""
@@ -799,25 +803,35 @@ def get_table_data(
                 params["period_val"] = period
 
             # ----------------------------------------------------
-            # 5. Eksekusi Query Hitung & Paginasi Data
+            # 5. Eksekusi Query Hitung & Paginasi Data (Optimized Single-Pass)
             # ----------------------------------------------------
-            total_all_rows = conn.execute(
-                text(f"SELECT COUNT(*) FROM {base_source_sql}")
-            ).scalar() or 0
-
-            warning_total = 0
-            valid_total = 0
+            has_filter = (where_clause != "")
+            
             if mandatory_cols and warning_sql_condition:
-                warning_total = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {base_source_sql} WHERE ({warning_sql_condition})")
-                ).scalar() or 0
-                valid_total = total_all_rows - warning_total
+                count_query = text(f"""
+                    SELECT 
+                        COUNT(*) AS total_all,
+                        COUNT(*) FILTER (WHERE {warning_sql_condition}) AS total_warning,
+                        COUNT(*) FILTER (WHERE {valid_sql_condition}) AS total_valid
+                        {f', COUNT(*) FILTER (WHERE {" AND ".join(where_conditions)}) AS total_filtered' if has_filter else ''}
+                    FROM {base_source_sql}
+                """)
+                count_res = conn.execute(count_query, params).fetchone()
+                total_all_rows = count_res[0] or 0
+                warning_total = count_res[1] or 0
+                valid_total = count_res[2] or 0
+                filtered_total_rows = count_res[3] if has_filter else total_all_rows
             else:
+                if has_filter:
+                    filtered_total_rows = conn.execute(
+                        text(f"SELECT COUNT(*) FROM {base_source_sql} {where_clause}"), params
+                    ).scalar() or 0
+                    total_all_rows = conn.execute(text(f"SELECT COUNT(*) FROM {base_source_sql}")).scalar() or 0
+                else:
+                    total_all_rows = conn.execute(text(f"SELECT COUNT(*) FROM {base_source_sql}")).scalar() or 0
+                    filtered_total_rows = total_all_rows
+                warning_total = 0
                 valid_total = total_all_rows
-
-            filtered_total_rows = conn.execute(
-                text(f"SELECT COUNT(*) FROM {base_source_sql} {where_clause}"), params
-            ).scalar() or 0
 
             order_by = ""
             if "no" in final_columns:
@@ -858,3 +872,177 @@ def get_table_data(
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{table_name}/export")
+def export_table_csv(
+    table_name: str,
+    status: str = Query("ALL"),
+    period: str = Query("ALL"),
+    limit: int = Query(250000, ge=1, le=500000),
+):
+    """
+    Direct High-Speed CSV Streaming Export dari basis data PostgreSQL.
+    Menyertakan UTF-8 BOM, preservasi presisi angka & tanggal,
+    serta format kompatibel penuh dengan Microsoft Excel.
+    """
+    clean_table = re.sub(r"[^a-zA-Z0-9_]", "", table_name.lower())
+
+    try:
+        conn = engine.connect()
+        is_aggregate = clean_table in AGGREGATE_CONFIG
+        target_tables: List[str] = []
+
+        if is_aggregate:
+            cfg = AGGREGATE_CONFIG[clean_table]
+            find_query = text(f"""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' AND ({cfg['filter_sql']})
+                ORDER BY table_name ASC;
+            """)
+            target_tables = [r[0] for r in conn.execute(find_query).fetchall()]
+        else:
+            check_query = text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = :tname
+                )
+            """)
+            exists = conn.execute(check_query, {"tname": clean_table}).scalar()
+            if exists:
+                target_tables = [clean_table]
+
+        if not target_tables:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Tabel tidak ditemukan atau tidak memiliki data.")
+
+        # Ekstraksi Kolom
+        table_cols_map: Dict[str, List[str]] = {}
+        all_cols_ordered: List[str] = []
+
+        for t in target_tables:
+            col_q = text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = :tname 
+                ORDER BY ordinal_position ASC
+            """)
+            c_list = [r[0] for r in conn.execute(col_q, {"tname": t}).fetchall()]
+            table_cols_map[t] = c_list
+            for col in c_list:
+                if col not in all_cols_ordered:
+                    all_cols_ordered.append(col)
+
+        lead_keys = ["no", "id", "policy_number", "no_polis", "insured_name", "nama_tertanggung", "nama_peserta_debitur", "debitur"]
+        tail_keys = ["cedant_name", "period", "created_at"]
+
+        lead_cols = [c for c in all_cols_ordered if c in lead_keys]
+        mid_cols = [c for c in all_cols_ordered if c not in lead_keys and c not in tail_keys]
+        tail_cols = [c for c in all_cols_ordered if c in tail_keys]
+
+        if is_aggregate and "cedant_name" not in tail_cols:
+            tail_cols.insert(0, "cedant_name")
+
+        final_columns = lead_cols + mid_cols + tail_cols
+        has_period_col = "period" in final_columns
+
+        # Base SQL
+        if not is_aggregate and len(target_tables) == 1:
+            base_source_sql = f'"{target_tables[0]}"'
+        else:
+            subqueries = []
+            for t in target_tables:
+                t_cols = set(table_cols_map[t])
+                derived_cedant = extract_cedant_from_tablename(t)
+                select_exprs = []
+
+                for col in final_columns:
+                    if col == "cedant_name":
+                        if "cedant_name" in t_cols:
+                            select_exprs.append(f'COALESCE("{col}", \'{derived_cedant}\') AS "{col}"')
+                        else:
+                            select_exprs.append(f"'{derived_cedant}' AS \"{col}\"")
+                    elif col in t_cols:
+                        select_exprs.append(f'"{col}"')
+                    else:
+                        select_exprs.append(f'NULL AS "{col}"')
+
+                subqueries.append(f'SELECT {", ".join(select_exprs)} FROM "{t}"')
+
+            union_sql = " UNION ALL ".join(subqueries)
+            base_source_sql = f"({union_sql}) AS unified_source"
+
+        # Filter Conditions
+        where_conditions = []
+        params: Dict[str, Any] = {"limit": limit}
+
+        mandatory_cols = [f'"{c}"' for c in final_columns if any(kw in c.lower() for kw in MANDATORY_KEYWORDS) and c.lower() not in ['no', 'id', 'remarks', 'period', 'cob']]
+        if mandatory_cols:
+            warning_sql = " OR ".join([f"({c} IS NULL OR TRIM(CAST({c} AS TEXT)) IN ('', 'nan', 'NaN', 'None', '<NA>'))" for c in mandatory_cols])
+            valid_sql = " AND ".join([f"({c} IS NOT NULL AND TRIM(CAST({c} AS TEXT)) NOT IN ('', 'nan', 'NaN', 'None', '<NA>'))" for c in mandatory_cols])
+
+            if status == "WARNING":
+                where_conditions.append(f"({warning_sql})")
+            elif status == "VALID":
+                where_conditions.append(f"({valid_sql})")
+
+        if period != "ALL" and has_period_col:
+            where_conditions.append('"period" = :period_val')
+            params["period_val"] = period
+
+        where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
+        order_by = 'ORDER BY "no" ASC' if "no" in final_columns else ('ORDER BY "id" ASC' if "id" in final_columns else '')
+
+        export_query = text(f"SELECT * FROM {base_source_sql} {where_clause} {order_by} LIMIT :limit")
+        result_cursor = conn.execute(export_query, params)
+
+        def csv_generator():
+            try:
+                # UTF-8 Byte Order Mark (BOM) agar Excel mengenali encoding secara akurat
+                yield "\ufeff"
+                
+                output = io.StringIO()
+                writer = csv.writer(output, lineterminator="\r\n")
+
+                # Header baris
+                headers = list(result_cursor.keys())
+                writer.writerow(headers)
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+
+                # Batch streaming per 500 baris
+                while True:
+                    rows = result_cursor.fetchmany(500)
+                    if not rows:
+                        break
+                    for r in rows:
+                        row_dict = r._mapping
+                        formatted_row = []
+                        for col in headers:
+                            val = row_dict.get(col)
+                            if val is None or (isinstance(val, float) and re.match(r"nan|inf", str(val), re.I)):
+                                formatted_row.append("")
+                            elif hasattr(val, "isoformat"):
+                                formatted_row.append(val.isoformat())
+                            else:
+                                formatted_row.append(str(val))
+                        writer.writerow(formatted_row)
+                    
+                    yield output.getvalue()
+                    output.seek(0)
+                    output.truncate(0)
+            finally:
+                conn.close()
+
+        filename = f"EXPORT_{clean_table.upper()}_{status}_{period.replace(' ', '_')}.csv"
+        return StreamingResponse(
+            csv_generator(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal mengekspor data: {str(e)}")

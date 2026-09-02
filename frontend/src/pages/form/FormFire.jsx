@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import apiClient from '../../utils/apiClient';
 import { 
   Search, 
   Download, 
@@ -111,7 +111,7 @@ export default function FormFire() {
   // 1. Ambil daftar periode unik
   const fetchPeriodList = async (tableName) => {
     try {
-      const response = await axios.get(`http://localhost:8000/api/v1/tables/${tableName}/periods`);
+      const response = await apiClient.get(`/tables/${tableName}/periods`);
       if (response.data.status === 'success') {
         setPeriodList(response.data.periods || []);
       }
@@ -131,7 +131,7 @@ export default function FormFire() {
   ) => {
     setLoading(true);
     try {
-      const response = await axios.get(`http://localhost:8000/api/v1/tables/${tableName}/data`, {
+      const response = await apiClient.get(`/tables/${tableName}/data`, {
         params: {
           page: targetPage,
           limit: currentLimit,
@@ -229,65 +229,64 @@ export default function FormFire() {
     setPage(1);
   };
 
-  // Logika Eksekusi Ekspor Data
+  // Logika Eksekusi Ekspor Data Berkecepatan Tinggi (Direct Streaming & UTF-8 BOM)
   const executeExport = async () => {
     setIsExporting(true);
     try {
-      let exportRows = [];
-      let exportCols = columns;
-
-      if (exportScope === 'CURRENT_PAGE') {
-        exportRows = dataList;
-      } else {
-        // Ambil seluruh data terfilter dari backend
-        const response = await axios.get(`http://localhost:8000/api/v1/tables/${currentTableName}/data`, {
-          params: {
-            page: 1,
-            limit: 100000,
-            status: filterStatus,
-            period: filterPeriod
-          }
-        });
-        if (response.data.status === 'success') {
-          exportRows = response.data.data || [];
-          exportCols = response.data.columns || columns;
-        }
-      }
-
-      if (exportRows.length === 0) {
-        alert('Tidak ada baris data untuk diekspor.');
-        setIsExporting(false);
-        setOpenExportModal(false);
-        return;
-      }
-
-      // Bangun konten CSV dengan UTF-8 BOM agar kompatibel dengan Excel tanpa merusak karakter/angka
-      const headers = exportCols.join(',');
-      const rows = exportRows.map(row => 
-        exportCols.map(col => {
-          let val = row[col];
-          if (val === null || val === undefined) val = '';
-          val = String(val).replace(/"/g, '""');
-          return `"${val}"`;
-        }).join(',')
-      );
-
-      const csvContent = '\uFEFF' + [headers, ...rows].join('\r\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      
       const cedantLabel = selectedCedant === 'ALL' ? 'SEMUA_CEDANT' : selectedCedant.toUpperCase();
       const typeLabel = selectedType === 'PREMIUM' ? 'PREMI' : 'KLAIM';
       const periodLabel = filterPeriod === 'ALL' ? 'SEMUA_PERIODE' : filterPeriod.replace(/\s+/g, '_');
       const scopeLabel = exportScope === 'CURRENT_PAGE' ? `HAL_${page}` : 'ALL';
-      
-      link.setAttribute('download', `BORDERO_FIRE_${cedantLabel}_${typeLabel}_${periodLabel}_${scopeLabel}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const downloadFileName = `BORDERO_FIRE_${cedantLabel}_${typeLabel}_${periodLabel}_${scopeLabel}.csv`;
+
+      if (exportScope === 'ALL_DATA') {
+        // Direct High-Speed Streaming dari PostgreSQL
+        const response = await apiClient.get(`/tables/${currentTableName}/export`, {
+          params: {
+            status: filterStatus,
+            period: filterPeriod,
+          },
+          responseType: 'blob'
+        });
+
+        const url = URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', downloadFileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        // Ekspor halaman aktif saat ini
+        if (dataList.length === 0) {
+          alert('Tidak ada baris data untuk diekspor.');
+          setIsExporting(false);
+          setOpenExportModal(false);
+          return;
+        }
+
+        const headers = columns.join(',');
+        const rows = dataList.map(row => 
+          columns.map(col => {
+            let val = row[col];
+            if (val === null || val === undefined) val = '';
+            val = String(val).replace(/"/g, '""');
+            return `"${val}"`;
+          }).join(',')
+        );
+
+        const csvContent = '\uFEFF' + [headers, ...rows].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', downloadFileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
 
       setOpenExportModal(false);
     } catch (err) {

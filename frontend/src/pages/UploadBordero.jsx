@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import UploadWidget from '../features/upload/components/UploadWidget';
 import ColumnMapper from '../features/mapping/components/ColumnMapper';
 import { getIprSchema } from '../data/iprMasterData';
@@ -15,10 +16,17 @@ import {
   FileCheck,
   Zap,
   Layers,
-  Server
+  Server,
+  Timer,
+  Clock,
+  Download,
+  Flame,
+  CreditCard,
+  FileText
 } from 'lucide-react';
 
 export default function UploadBordero() {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState('UPLOAD');
   const [uploadPayload, setUploadPayload] = useState(null);
   const [fileMappings, setFileMappings] = useState({});
@@ -27,10 +35,13 @@ export default function UploadBordero() {
   const [etlReportResults, setEtlReportResults] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Progress Bar State
+  // Progress Bar & Stopwatch Timer State
   const [progressPercent, setProgressPercent] = useState(0);
   const [progressStatusText, setProgressStatusText] = useState('Mempersiapkan data...');
   const [currentProgressStep, setCurrentProgressStep] = useState(1);
+  const [elapsedTimeSec, setElapsedTimeSec] = useState('0.0');
+  const timerRef = useRef(null);
+  const startTimeRef = useRef(null);
 
   const handleUploadComplete = (payload) => {
     setUploadPayload(payload);
@@ -53,9 +64,20 @@ export default function UploadBordero() {
     if (!uploadPayload?.files?.length) return;
     setCurrentStep('EXECUTING');
     setErrorMessage('');
-    setProgressPercent(15);
+    setProgressPercent(10);
     setProgressStatusText('1/4: Memvalidasi konfigurasi pemetaan skema IPR...');
     setCurrentProgressStep(1);
+    setElapsedTimeSec('0.0');
+
+    // Mulai stopwatch penghitung waktu real-time
+    startTimeRef.current = performance.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      if (startTimeRef.current) {
+        const diff = (performance.now() - startTimeRef.current) / 1000;
+        setElapsedTimeSec(diff.toFixed(1));
+      }
+    }, 100);
 
     // Progress animation interval
     const progressTimer = setInterval(() => {
@@ -63,11 +85,11 @@ export default function UploadBordero() {
         if (prev < 40) {
           setProgressStatusText('2/4: Menjalankan sanitasi data & normalisasi tanggal/numerik...');
           setCurrentProgressStep(2);
-          return prev + 12;
+          return prev + 10;
         } else if (prev < 75) {
           setProgressStatusText('3/4: Sinkronisasi skema DDL & verifikasi tabel PostgreSQL...');
           setCurrentProgressStep(3);
-          return prev + 8;
+          return prev + 6;
         } else if (prev < 90) {
           setProgressStatusText('4/4: Batch streaming COPY protocol ke tabel fisik...');
           setCurrentProgressStep(4);
@@ -75,7 +97,7 @@ export default function UploadBordero() {
         }
         return prev;
       });
-    }, 450);
+    }, 400);
 
     try {
       const formattedFiles = uploadPayload.files.map((file, idx) => {
@@ -104,8 +126,15 @@ export default function UploadBordero() {
 
       const res = await processWithMapping(body);
       clearInterval(progressTimer);
+      if (timerRef.current) clearInterval(timerRef.current);
+
+      if (startTimeRef.current) {
+        const finalDiff = (performance.now() - startTimeRef.current) / 1000;
+        setElapsedTimeSec(finalDiff.toFixed(2));
+      }
+
       setProgressPercent(100);
-      setProgressStatusText('Selesai! Data berhasil dimuat ke database.');
+      setProgressStatusText('Selesai! Seluruh berkas batch berhasil dimuat ke database.');
       setCurrentProgressStep(4);
 
       sessionStorage.removeItem("etl_upload_widget_state");
@@ -114,15 +143,22 @@ export default function UploadBordero() {
       setTimeout(() => {
         setEtlReportResults(processed);
         setCurrentStep('SUCCESS');
-      }, 600);
+      }, 500);
     } catch (err) {
       clearInterval(progressTimer);
+      if (timerRef.current) clearInterval(timerRef.current);
       console.error('Gagal memproses ETL dengan mapping:', err);
       const detail = err.response?.data?.detail || err.message || 'Terjadi kesalahan saat memproses data ke database.';
       setErrorMessage(detail);
       setCurrentStep('MAPPING');
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const handleApplyToAllFiles = (sourceMapping, sourceNonIprConfig) => {
     const updatedFileMappings = {};
@@ -139,6 +175,49 @@ export default function UploadBordero() {
 
   const activeFile = uploadPayload?.files?.[activeFileIndex] || null;
   const activeSourceColumns = activeFile?.available_sheets_columns?.[activeFile?.selectedSheet] || [];
+
+  // Agregasi Laporan Batch Konsolidasi
+  const batchSummary = useMemo(() => {
+    if (!etlReportResults || !etlReportResults.length) return null;
+    const totalFiles = etlReportResults.length;
+    const totalRows = etlReportResults.reduce((acc, curr) => acc + (curr.total_rows_loaded || 0), 0);
+    const totalDurationMs = etlReportResults.reduce((acc, curr) => acc + (curr.duration_ms || 0), 0);
+    const hasFire = etlReportResults.some(r => String(r.table_name).includes('_fire'));
+    const hasCredit = etlReportResults.some(r => String(r.table_name).includes('_credit') || String(r.table_name).includes('_kredit'));
+    const cedantName = etlReportResults[0]?.cedant_name || uploadPayload?.cedant?.name || 'Cedant';
+
+    return {
+      totalFiles,
+      totalRows,
+      totalDurationMs,
+      hasFire,
+      hasCredit,
+      cedantName
+    };
+  }, [etlReportResults, uploadPayload]);
+
+  const handleDownloadBatchJson = () => {
+    if (!etlReportResults) return;
+    const exportData = {
+      batch_id: `BATCH_${Date.now()}`,
+      cedant: uploadPayload?.cedant?.name || 'Cedant',
+      execution_timestamp: new Date().toISOString(),
+      total_duration_sec: elapsedTimeSec,
+      total_files: etlReportResults.length,
+      total_rows: batchSummary?.totalRows || 0,
+      files: etlReportResults
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `LAPORAN_BATCH_ETL_${(uploadPayload?.cedant?.code || 'CEDANT').toUpperCase()}_${Date.now()}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const progressSteps = [
     { num: 1, label: 'Validasi Berkas & Pemetaan IPR', desc: 'Mencocokkan kolom sumber terhadap standar baku IPR', icon: <FileCheck className="w-4 h-4" /> },
@@ -243,7 +322,7 @@ export default function UploadBordero() {
         </div>
       )}
 
-      {/* STEP 3: EXECUTING WITH REAL-TIME PROGRESS BAR & CHECKLIST */}
+      {/* STEP 3: EXECUTING WITH REAL-TIME PROGRESS BAR, CHECKLIST & LIVE STOPWATCH */}
       {currentStep === 'EXECUTING' && (
         <div className="bg-white p-10 md:p-14 rounded-3xl border border-slate-200 shadow-xl space-y-8 max-w-3xl mx-auto animate-in fade-in duration-200">
           
@@ -258,6 +337,14 @@ export default function UploadBordero() {
             <p className="text-xs text-slate-500 max-w-md mx-auto">
               Pipeline ETL sedang menstandarisasi data sesuai skema IPR dan menyuntikkan baris transaksi ke basis data.
             </p>
+
+            {/* Live Stopwatch Counter Badge */}
+            <div className="pt-2">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 rounded-full text-xs font-mono font-semibold shadow-2xs">
+                <Timer className="w-4 h-4 text-blue-600 animate-spin" />
+                <span>Waktu Proses: {elapsedTimeSec} detik</span>
+              </div>
+            </div>
           </div>
 
           {/* Progress Bar & Percentage */}
@@ -318,49 +405,107 @@ export default function UploadBordero() {
         </div>
       )}
 
-      {/* STEP 4: SUCCESS SUMMARY */}
-      {currentStep === 'SUCCESS' && (
-        <div className="bg-white p-8 rounded-3xl border border-slate-200/80 space-y-6 shadow-xs animate-in fade-in duration-150">
-          <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
-              <CheckCircle2 className="w-6 h-6" />
+      {/* STEP 4: SUCCESS CONSOLIDATED BATCH REPORT */}
+      {currentStep === 'SUCCESS' && batchSummary && (
+        <div className="bg-white p-8 md:p-10 rounded-3xl border border-slate-200/80 space-y-8 shadow-xs animate-in fade-in duration-200">
+          
+          {/* Batch Summary Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-slate-900">Laporan Eksekusi Batch Bordero</h2>
+                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-semibold rounded-full">
+                    100% SUKSES
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Seluruh {batchSummary.totalFiles} berkas bordero untuk {batchSummary.cedantName} berhasil distandarisasi dan dimuat ke PostgreSQL.
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Proses ETL Selesai Berhasil</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Seluruh data transaksi bordero telah berhasil distandarisasi ke skema IPR dan dimuat ke PostgreSQL.
+
+            {/* Total Duration Badge */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl shrink-0">
+              <Clock className="w-4 h-4 text-slate-500" />
+              <div className="text-xs">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Durasi</span>
+                <span className="font-mono font-bold text-slate-800">{elapsedTimeSec} detik</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 KPI Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-1">
+              <span className="text-[11px] font-medium text-blue-600 uppercase tracking-wider">Total Berkas Batch</span>
+              <p className="text-2xl font-bold text-blue-950">{batchSummary.totalFiles} Berkas</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 space-y-1">
+              <span className="text-[11px] font-medium text-indigo-600 uppercase tracking-wider">Total Baris Dimuat</span>
+              <p className="text-2xl font-bold text-indigo-950 font-mono">{batchSummary.totalRows.toLocaleString('id-ID')} Baris</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 space-y-1">
+              <span className="text-[11px] font-medium text-emerald-600 uppercase tracking-wider">Integritas Skema IPR</span>
+              <p className="text-2xl font-bold text-emerald-950">Terstandarisasi</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-1">
+              <span className="text-[11px] font-medium text-amber-600 uppercase tracking-wider">Rata-rata Waktu / Berkas</span>
+              <p className="text-2xl font-bold text-amber-950 font-mono">
+                {batchSummary.totalFiles > 0 ? (batchSummary.totalDurationMs / batchSummary.totalFiles).toFixed(0) : 0} ms
               </p>
             </div>
           </div>
 
+          {/* Detailed Batch Breakdown Table */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-              <Database className="w-4 h-4 text-blue-600" /> Ringkasan Laporan Pemuatan
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600" /> Rincian Berkas dalam Laporan Batch
+              </h3>
+              <span className="text-xs text-slate-400">1 Laporan Terkonsolidasi</span>
+            </div>
 
             <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
               <table className="w-full text-left border-collapse text-xs font-sans">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase tracking-wider">
-                    <th className="py-3 px-4">Tabel Target</th>
-                    <th className="py-3 px-4">Cedant</th>
-                    <th className="py-3 px-4">Periode</th>
-                    <th className="py-3 px-4 text-center">Kolom IPR</th>
-                    <th className="py-3 px-4 text-center">Kolom Ekstra</th>
-                    <th className="py-3 px-4 text-right">Baris Dimuat</th>
-                    <th className="py-3 px-4 text-right">Durasi</th>
+                    <th className="py-3.5 px-4">Nama Berkas / ID</th>
+                    <th className="py-3.5 px-4">Tabel Fisik Target</th>
+                    <th className="py-3.5 px-4">Periode</th>
+                    <th className="py-3.5 px-4 text-center">Kolom IPR</th>
+                    <th className="py-3.5 px-4 text-center">Kolom Ekstra</th>
+                    <th className="py-3.5 px-4 text-right">Baris Dimuat</th>
+                    <th className="py-3.5 px-4 text-right">Durasi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {(etlReportResults || []).map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50">
-                      <td className="py-3 px-4 font-mono text-blue-700 font-medium">{r.table_name}</td>
-                      <td className="py-3 px-4 font-medium text-slate-800">{r.cedant_name}</td>
+                  {etlReportResults.map((r, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-800 font-medium">
+                        {uploadPayload?.files?.[i]?.name || r.file_id}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-blue-700 font-semibold">{r.table_name}</td>
                       <td className="py-3 px-4 font-mono text-slate-600">{r.period}</td>
-                      <td className="py-3 px-4 text-center text-emerald-600 font-medium">{r.ipr_mapped_count} Kolom</td>
-                      <td className="py-3 px-4 text-center text-indigo-600 font-medium">{r.non_ipr_added_count} Kolom</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-900 font-semibold">{r.total_rows_loaded?.toLocaleString('id-ID')} Baris</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-400">{r.duration_ms ? `${r.duration_ms} ms` : '-'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md font-medium">
+                          {r.ipr_mapped_count} Kolom
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-medium">
+                          {r.non_ipr_added_count} Kolom
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-900 font-bold">
+                        {r.total_rows_loaded?.toLocaleString('id-ID')} Baris
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-500">
+                        {r.duration_ms ? `${r.duration_ms} ms` : '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -368,14 +513,48 @@ export default function UploadBordero() {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          {/* Action Navigation Footer */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setCurrentStep('UPLOAD')}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+              onClick={handleDownloadBatchJson}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 font-medium rounded-xl text-xs transition-colors cursor-pointer"
             >
-              Upload Berkas Lain
+              <Download className="w-4 h-4 text-slate-500" />
+              <span>Unduh Ringkasan Laporan Batch (JSON)</span>
             </button>
+
+            <div className="flex items-center gap-3">
+              {batchSummary.hasFire && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/form/form-fire')}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  <Flame className="w-4 h-4 text-amber-600" />
+                  <span>Lihat di Data Viewer Fire</span>
+                </button>
+              )}
+
+              {batchSummary.hasCredit && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/form/form-kredit')}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                  <span>Lihat di Data Viewer Kredit</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCurrentStep('UPLOAD')}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                Upload Batch Berkas Baru
+              </button>
+            </div>
           </div>
         </div>
       )}

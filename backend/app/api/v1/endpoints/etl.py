@@ -12,6 +12,7 @@ from app.database.loader import insert_data_to_db, load_dataframe_to_postgres, m
 from app.models.etl_log import EtlActivityLog
 from app.models.mapping_preset import MappingPreset
 from app.services.etl_factory import run_etl_service
+from app.services.transformer_service import transform_raw_dataframe
 from app.services.inspector_service import (
     check_target_table_in_db,
     execute_create_table,
@@ -227,122 +228,40 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 else:
                     df_raw = pd.read_excel(file_path, sheet_name=selected_sheet, header=best_row_idx)
 
-            # 3. Bangun DataFrame Terstandarisasi dengan Seluruh Kolom IPR (Lengkap + NULL jika unmapped)
-            is_claim_op = ("claim" in clean_cat) or ("klaim" in clean_cat)
-            is_credit_op = ("credit" in clean_cob) or ("kredit" in clean_cob)
-            schema_key = f"{'CREDIT' if is_credit_op else 'FIRE'}_{'CLAIM' if is_claim_op else 'PREMIUM'}"
-            
-            canonical_ipr_schemas = {
-                "FIRE_PREMIUM": [
-                    "no", "cob", "policy_number", "certificate_number", "insured_name", "insured_affiliation",
-                    "period_start", "period_end", "uw_year", "coverage", "policy_type", "currency",
-                    "si_md_building", "si_machinery", "si_stock", "si_tpl", "si_bi", "si_others",
-                    "tsi_100_percent", "basis_of_indemnity", "pml_amount", "pml_percentage", "eq_zone",
-                    "occupation_code", "occupation", "location", "zip_code", "latitude", "longitude",
-                    "construction_class", "source_business", "is_endorsement", "endorsement_effective_date",
-                    "endorsement_description", "cedant_share_percent", "cedant_share_amount",
-                    "total_coinsurance_panels", "risk_or", "risk_qs", "risk_surplus", "risk_others",
-                    "premium_100_percent", "premium_gross_rate", "discount", "first_loss_scale",
-                    "premium_net_rate", "ceded_premium_100", "indonesia_re_share_premium",
-                    "special_acceptance", "special_acceptance_desc", "note"
-                ],
-                "FIRE_CLAIM": [
-                    "no", "cob", "claim_ref_number", "policy_number", "certificate_number",
-                    "reff_bordereaux_premium", "insured_name", "period_start", "period_end", "uw_year",
-                    "occupation_code", "occupation", "location", "zip_code", "latitude", "longitude",
-                    "date_of_loss", "settled_date", "proximate_cause", "cause_of_loss", "coverage_affected",
-                    "currency", "claim_md_building", "claim_machinery", "claim_stock", "claim_tpl",
-                    "claim_bi", "claim_other", "claim_adjuster_fee", "total_incurred_claim_100",
-                    "cedant_share_percent", "cedant_share_amount", "claim_or", "claim_qs", "claim_surplus",
-                    "claim_others", "type_of_loss", "paid_claims_reinsurer_share",
-                    "outstanding_claims_reinsurer_share", "paid_claims_indonesia_re_share",
-                    "outstanding_claims_indonesia_re_share", "note"
-                ],
-                "CREDIT_PREMIUM": [
-                    "no", "policy_number", "insured_name", "date_of_birth", "tsi_100_percent",
-                    "period_start", "period_end", "tenor_months", "premium_100_percent",
-                    "indonesia_re_share_premium", "note"
-                ],
-                "CREDIT_CLAIM": [
-                    "no", "claim_ref_number", "policy_number", "insured_name", "date_of_loss",
-                    "cause_of_loss", "total_incurred_claim_100", "paid_claims_indonesia_re_share", "note"
-                ]
-            }
-            canonical_cols = canonical_ipr_schemas.get(schema_key, canonical_ipr_schemas["FIRE_PREMIUM"])
-
-            df_transformed = pd.DataFrame(index=df_raw.index)
-
-            # A. Isi seluruh kolom IPR (data dari Excel jika di-mapping, atau NULL jika unmapped)
-            user_mapping = file_info.column_mapping or {}
-            for ipr_col in canonical_cols:
-                src_col = user_mapping.get(ipr_col)
-                if src_col and src_col in df_raw.columns:
-                    df_transformed[ipr_col] = df_raw[src_col]
-                else:
-                    df_transformed[ipr_col] = None
-
-            # B. Tambahkan kolom Non-IPR kustom yang diaktifkan
-            active_non_ipr_columns = []
-            if file_info.non_ipr_mapping:
-                for source_col, cfg in file_info.non_ipr_mapping.items():
-                    if isinstance(cfg, dict):
-                        is_enabled = cfg.get("enabled", True)
-                        target_db_name = cfg.get("dbField", source_col)
+                # Pastikan seluruh kolom di df_raw memiliki nama unik (tidak ada duplikasi kolom di level pandas)
+                seen_cols_count = {}
+                unique_raw_cols = []
+                for c in df_raw.columns:
+                    str_c = str(c).strip()
+                    if str_c in seen_cols_count:
+                        seen_cols_count[str_c] += 1
+                        unique_raw_cols.append(f"{str_c}_{seen_cols_count[str_c]}")
                     else:
-                        is_enabled = getattr(cfg, "enabled", True)
-                        target_db_name = getattr(cfg, "dbField", source_col)
+                        seen_cols_count[str_c] = 1
+                        unique_raw_cols.append(str_c)
+                df_raw.columns = unique_raw_cols
 
-                    clean_non_ipr = re.sub(r"[^a-zA-Z0-9_]", "_", str(target_db_name).strip().lower())
-                    clean_non_ipr = re.sub(r"_+", "_", clean_non_ipr).strip("_")
-                    if is_enabled and source_col in df_raw.columns and clean_non_ipr not in df_transformed.columns:
-                        df_transformed[clean_non_ipr] = df_raw[source_col]
-                        active_non_ipr_columns.append({"source": source_col, "target": clean_non_ipr})
+            # 3. Transformasi DataFrame Terstandarisasi melalui Transformer Service
+            df_transformed, active_non_ipr_columns = transform_raw_dataframe(
+                df_raw=df_raw,
+                file_info=file_info,
+                clean_cob=clean_cob,
+                clean_cat=clean_cat,
+                cedant_label=cedant_label
+            )
 
-            # 4. Format Periode & Cedant Name
-            raw_period = str(file_info.period or "").strip()
-            raw_year = str(file_info.received_date or "").strip()
-            full_period = f"{raw_period.upper()} {raw_year}".strip() if (raw_year and raw_year not in raw_period) else raw_period.upper().strip()
-
-            for reserved_col in ["period", "cedant_name"]:
-                if reserved_col in df_transformed.columns:
-                    df_transformed.drop(columns=[reserved_col], inplace=True)
-
-            df_transformed["period"] = full_period
-            df_transformed["cedant_name"] = cedant_label
-            df_transformed.columns = make_unique_column_names(df_transformed.columns)
-
-            # 5. Hapus Baris Kosong / Total Invalid
-            if not df_transformed.empty:
-                mapped_db_cols = [k for k, v in (file_info.column_mapping or {}).items() if v and k in df_transformed.columns]
-                if not mapped_db_cols:
-                    mapped_db_cols = [c for c in df_transformed.columns if c not in ["period", "cedant_name"]]
-
-                if mapped_db_cols:
-                    valid_mask = df_transformed[mapped_db_cols].apply(
-                        lambda row: any(
-                            pd.notna(val) and str(val).strip().lower() not in ['', 'nan', 'none', 'null', '<na>', 'total', 'jumlah']
-                            for val in row
-                        ),
-                        axis=1
-                    )
-                    df_transformed = df_transformed[valid_mask].copy()
-
-                df_transformed.reset_index(drop=True, inplace=True)
-
-            # 6. Execution Load ke Database
-            chunk_size = 200
+            # 4. Execution Fast Bulk Loading ke Database PostgreSQL
             total_rows_loaded = 0
-            
             if not df_transformed.empty:
-                for i in range(0, len(df_transformed), chunk_size):
-                    df_chunk = df_transformed.iloc[i : i + chunk_size].copy()
-                    loaded = load_dataframe_to_postgres(df_chunk, target_table_name)
-                    total_rows_loaded += (loaded if isinstance(loaded, int) else len(df_chunk))
+                loaded = load_dataframe_to_postgres(df_transformed, target_table_name)
+                total_rows_loaded = loaded if isinstance(loaded, int) else len(df_transformed)
             
             rows_loaded = total_rows_loaded
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # 7. Catat Log Aktivitas
+            target_period = str(df_transformed["period"].iloc[0]) if ("period" in df_transformed.columns and not df_transformed.empty) else str(file_info.period or "").upper().strip()
+
+            # 5. Catat Log Aktivitas
             try:
                 file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
                 mapping_config_json = json.dumps({
@@ -368,7 +287,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                         cob=clean_cob.upper(),
                         category=clean_cat,
                         target_table=target_table_name,
-                        period=full_period,
+                        period=target_period,
                         file_name=file_info.file_id,
                         file_size_bytes=file_size,
                         rows_inserted=rows_loaded,
@@ -389,7 +308,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 "total_columns": len(df_transformed.columns),
                 "ipr_mapped_count": len([k for k, v in (file_info.column_mapping or {}).items() if v]),
                 "non_ipr_added_count": len(active_non_ipr_columns),
-                "period": full_period,
+                "period": target_period,
                 "cedant_name": cedant_label,
                 "duration_ms": duration_ms,
             })

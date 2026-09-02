@@ -16,10 +16,20 @@ def ensure_directories_exist():
 
 
 def save_temp_file(file_bytes: bytes, original_filename: str) -> str:
-    """Menyimpan file ke folder temporary dan mengembalikan file_id (UUID)."""
+    """
+    Menyimpan file ke folder temporary dengan nama aman berbasis UUID 
+    dan validasi ekstensi berkas.
+    """
     ensure_directories_exist()
     file_id = f"file_{uuid.uuid4().hex}"
-    ext = os.path.splitext(original_filename)[1]
+    clean_base = os.path.basename(str(original_filename or ""))
+    ext = os.path.splitext(clean_base)[1].lower()
+    
+    # Whitelist ekstensi yang diizinkan
+    allowed_exts = {".xlsx", ".xls", ".xlsm", ".xltx", ".csv"}
+    if ext not in allowed_exts:
+        ext = ".xlsx"
+        
     file_path = os.path.join(TEMP_DIR, f"{file_id}{ext}")
 
     with open(file_path, "wb") as f:
@@ -29,12 +39,24 @@ def save_temp_file(file_bytes: bytes, original_filename: str) -> str:
 
 
 def get_temp_file_path(file_id: str) -> str:
-    """Mencari path file berdasarkan file_id."""
+    """
+    Mencari path file berdasarkan file_id secara aman dengan perlindungan Path Traversal.
+    """
     ensure_directories_exist()
-    for fname in os.listdir(TEMP_DIR):
-        if fname.startswith(file_id):
-            return os.path.join(TEMP_DIR, fname)
-    raise FileNotFoundError(f"File dengan ID '{file_id}' tidak ditemukan atau sudah kadaluarsa.")
+    # Hapus sekuens direktori traversal tetapi izinkan ekstensi titik dan tanda hubung
+    safe_file_id = re.sub(r"[^a-zA-Z0-9_.\-]", "", os.path.basename(str(file_id or "")))
+    if not safe_file_id or safe_file_id.startswith("."):
+        raise ValueError("Format file ID tidak valid.")
+
+    temp_dir_abs = os.path.abspath(TEMP_DIR)
+    for fname in os.listdir(temp_dir_abs):
+        if fname.startswith(safe_file_id):
+            full_path = os.path.abspath(os.path.join(temp_dir_abs, fname))
+            # Verifikasi bahwa path berada strictly di dalam temp_uploads
+            if os.path.commonpath([temp_dir_abs, full_path]) == temp_dir_abs:
+                return full_path
+
+    raise FileNotFoundError(f"File dengan ID '{safe_file_id}' tidak ditemukan atau sudah kadaluarsa.")
 
 
 def detect_period_from_filename(filename: str) -> dict:

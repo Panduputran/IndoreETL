@@ -21,7 +21,7 @@
 
 **Insurance Bordero ETL & Cleansing Platform (IndoreETL)** adalah platform otomasi pipeline data (*Extract, Transform, Load*) skala enterprise yang dirancang khusus untuk memproses, memvalidasi, menstandardisasi, dan menganalisis jutaan baris transaksi bordero reasuransi/asuransi dari berbagai perusahaan asuransi (*cedants*).
 
-Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CSS v4, dan Recharts** dengan mesin komputasi berkecepatan tinggi **Python FastAPI, Pandas, & NumPy** yang terintegrasi dengan basis data **PostgreSQL** melalui teknik injeksi binary COPY stream berkinerja tinggi.
+Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CSS v4, dan Recharts** dengan mesin komputasi berkecepatan tinggi **Python FastAPI, Pandas, & NumPy** yang terintegrasi dengan basis data **PostgreSQL** melalui teknik injeksi binary COPY stream berkinerja tinggi serta arsitektur modular skala produksi.
 
 ---
 
@@ -35,27 +35,25 @@ Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CS
   * Metrik KPI real-time dengan kueri instan sub-milidetik (`pg_stat_user_tables`).
   * Visualisasi grafik Donut/Pie Chart untuk komposisi premi vs klaim dan distribusi peran user.
   * Grafik Bar Chart kontribusi volume transaksi per cedant dan Area Chart kecepatan eksekusi ETL (*ms*).
-* **Filter Tabel Database Resmi Cedant (`{kategori}_{cedant}_{cob}`):**
-  * Sistem kueri menyaring dan hanya menampilkan tabel fisik resmi (misal `premi_aca_fire`, `claim_tripakarta_fire`, `premi_askrida_credit`).
-  * Tabel sistem/metadata (`alembic_version`, `app_users`, `etl_activity_log`, `mapping_presets`) dan tabel backup otomatis disembunyikan.
+* **Global Maximum-Weight Bipartite Auto-Matching & Full IPR Guarantee:**
+  * Algoritma pencocokan bipartit yang memprioritaskan kecocokan persis (*exact & alias match*) dan mencegah perebutan kolom yang tidak semestinya.
+  * Penjaminan seluruh kolom standar Master IPR (51 kolom `FIRE_PREMIUM`, 43 kolom `FIRE_CLAIM`, dll.) selalu terbuat di database (diisi `NULL` jika tidak di-mapping).
+  * Auto-ALTER dinamis (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`) untuk penambahan kolom baru secara instan.
+* **Dev Tools: DB Table Manager & Testing Reset Portal:**
+  * Halaman khusus developer & tester untuk melihat seluruh tabel fisik di PostgreSQL (`premi_*` dan `claim_*`) beserta jumlah baris (*live tuples*) dan ukuran disk.
+  * Fitur **"Drop Table"** per baris dan **"Hapus Semua Tabel Uji Coba"** dengan 1 klik tanpa perlu membuka DBeaver.
 * **Visual Mapping Cockpit dengan Kontras Visual Tinggi:**
   * Penandaan baris *Required* yang belum terpetakan dengan border merah tebal (`border-l-4 border-l-rose-500`), latar merah muda (`bg-rose-50/80`), dan badge `* WAJIB DIISI`.
-  * Penandaan baris opsional kosong berwarna kuning/amber (`border-l-4 border-l-amber-400`).
-  * Penandaan baris valid berwarna hijau (`border-l-4 border-l-emerald-500`).
   * Integrasi manajemen preset pemetaan (*"Terapkan Preset"* & *"Simpan Preset ke Database"*).
 * **Audit Trail & Modal Detail Eksekusi (Eye Action Icon):**
-  * Tabel riwayat ETL dengan tombol aksi **Mata (Detail)** yang membuka modal interaktif 3 tab:
-    1. *Ringkasan Eksekusi:* Metrik baris, durasi, status, nama file, dan banner error.
-    2. *Hasil Pemetaan Kolom:* Visualisasi pemetaan kolom sumber terhadap field target IPR & Non-IPR.
-    3. *Log Teknis & Audit:* Konsol catatan tahapan inspeksi, sanitasi, dan stream injeksi ke database.
-* **User Guide Bebas Layout Shift:**
-  * Antarmuka panduan pengguna terstruktur dengan tombol tab fixed-border dan kontainer stabil (`min-h-[420px]`).
-* **Dynamic Header & Metadata Detection:**
-  * Otomatis mendeteksi baris offset metadata (kop surat, judul laporan) dan mengidentifikasi letak baris header kolom pada berkas Excel/CSV.
-* **Vectorized High-Speed Cleansing:**
-  * Memanfaatkan vektorisasi NumPy dan Pandas untuk normalisasi format tanggal, pembersihan teks mata uang, pemaksaan numerik 2 desimal, dan validasi integritas data.
-* **High-Throughput Batch Ingestion:**
-  * Pemuatan data batch hemat memori (*memory-safe chunking*) menggunakan PostgreSQL COPY stream multi-chunk.
+  * Tabel riwayat ETL dengan tombol aksi **Mata (Detail)** yang membuka modal interaktif 3 tab (*Ringkasan Eksekusi, Hasil Pemetaan Kolom, dan Log Teknis & Audit*).
+* **Optimasi Performa Produksi (Sub-Second Response):**
+  * **Frontend Code Splitting & Lazy Loading:** Ukuran berkas utama `index.js` tereduksi drastis menjadi **17.8 kB** (5.4 kB gzip) dengan pemisahan *vendor chunks* (`vendor-react`, `vendor-charts`, `vendor-icons`).
+  * **In-Memory Query Cache & Deduplication:** Caching client-side cerdas dengan TTL 15-30s dan *auto-invalidation* saat mutasi data berlangsung.
+  * **SQLAlchemy Connection Pooling:** Konfigurasi pool konkurensi tinggi (`pool_size=20`, `max_overflow=10`, `pool_recycle=1800`, `pool_pre_ping=True`).
+* **Keamanan & Vulnerability Hardening:**
+  * **Pencegahan Path Traversal:** Validasi ketat nama file pada folder `temp_uploads/` menggunakan `os.path.basename` dan `os.path.commonpath`.
+  * **Pencegahan SQL Injection:** Validasi pola nama tabel dengan regex whitelist `^[a-zA-Z0-9_]+$` dan *quoted identifiers*.
 
 ---
 
@@ -66,9 +64,10 @@ Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CS
 │                 React Frontend (Web Portal)                 │
 │  - Google & Microsoft SSO + Local Auth Provider             │
 │  - Executive ERP Analytics Dashboard (Recharts Visualizer)  │
+│  - Lazy-Loaded Route Splitting & In-Memory Query Caching    │
 │  - High-Contrast Visual Mapping Cockpit with Presets        │
+│  - Dev Table Manager (Drop Table & Testing Reset Portal)    │
 │  - Unified COB Data Viewers & Data Exporter (Fire & Credit) │
-│  - ETL Audit Trail & Multi-Tab Execution Detail Modal       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ REST API (JSON / Multipart Form)
                                ▼
@@ -76,15 +75,16 @@ Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CS
 │                   FastAPI Backend Engine                    │
 │  - SSO OAuth & JWT Security Router                          │
 │  - File Inspector & Dynamic Header Parsing Engine           │
-│  - NumPy / Pandas High-Speed Vectorized Transformation      │
-│  - Official Table Name Filter & Sub-ms PG Stats Dashboard   │
-│  - Column Name Deduplication (make_unique_column_names)     │
+│  - Transformer Service (Canonical IPR & 1D Vectorization)   │
+│  - Connection Pool Optimization (pool_size=20, pre-ping)    │
+│  - Path Traversal Guard & SQL Identifier Whitelisting       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ PostgreSQL COPY Batch Stream
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     PostgreSQL Database                     │
 │  - Official Cedant Tables ({kategori}_{cedant}_{cob})       │
+│  - Dynamic Schema Migration (Auto-ALTER Missing Columns)    │
 │  - System Metadata (app_users, etl_activity_log, presets)   │
 │  - Sub-ms Live Statistics via pg_stat_user_tables           │
 └─────────────────────────────────────────────────────────────┘
@@ -96,6 +96,6 @@ Platform ini menggabungkan antarmuka web modern berbasis **React 19, Tailwind CS
 
 Untuk dokumentasi arsitektur modul secara mendalam, silakan merujuk ke dokumen berikut:
 * **[Dokumentasi Arsitektur Utama (gemini.md)](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/gemini.md)**: Ringkasan komprehensif arsitektur, workflow pipeline, dan skema data.
-* **[Backend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/backend-structure.md)**: Rincian modul router, services cedant, database loader, dan skema Pydantic.
-* **[Frontend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/frontend-structure.md)**: Rincian komponen UI, feature modules, routing, dan integrasi API Axios.
-* **[Panduan Instalasi & Setup (setup.md)](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/setup.md)**: Panduan setup database PostgreSQL, backend FastAPI, dan frontend React.
+* **[Backend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/backend-structure.md)**: Rincian modul router, transformer service, database loader, dan connection pooling.
+* **[Frontend Architecture & Structure](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/frontend-structure.md)**: Rincian komponen UI, lazy loading, caching query, dan konfigurasi chunk Vite.
+* **[Panduan Instalasi & Setup (setup.md)](file:///c:/Pandu/Github%20Desktop/IndonesiareETL/setup.md)**: Petunjuk konfigurasi environment, database setup, dan build production.

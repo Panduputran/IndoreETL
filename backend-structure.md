@@ -62,6 +62,7 @@ backend/
     ├── services/
     │   ├── etl_factory.py              # Dynamic Orchestrator yang mengarahkan payload ke kelas Cedant yang sesuai
     │   ├── inspector_service.py        # Logika inspeksi berkas Excel, dynamic header parsing, dan DDL generator
+    │   ├── transformer_service.py      # Standardisasi skema Master IPR (Fire/Credit), vektorisasi 1D aman, & pembersihan baris
     │   │
     │   └── cedants/                    # Modul transformasi data spesifik per perusahaan asuransi (Cedant)
     │       ├── base.py                 # Abstract Base Class / Interface (process_premi & process_claim)

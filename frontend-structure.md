@@ -15,6 +15,10 @@ Dokumentasi arsitektur, hierarki direktori, dan modul fitur frontend untuk **Ind
   * Penandaan baris opsional kosong berwarna kuning/amber (`border-l-4 border-l-amber-400`).
   * Penandaan baris valid berwarna hijau bercentang (`border-l-4 border-l-emerald-500`).
   * Panel kontrol Preset Mapping untuk memilih, menerapkan (*"Terapkan Preset"*), dan menyimpan konfigurasi ke PostgreSQL.
+* **Optimasi Performa & Code Splitting:**
+  * **Lazy Loading:** Seluruh halaman utama dimuat secara *on-demand* (`React.lazy` dan `Suspense`) dengan *loading fallback* yang halus.
+  * **Manual Chunk Splitting:** Konfigurasi bundler Vite/Rollup yang memecah dependensi berat menjadi vendor chunks terisolasi (`vendor-react`, `vendor-charts`, `vendor-icons`, `vendor-axios`), mereduksi bundle awal dari 936 kB menjadi **17.8 kB**.
+  * **In-Memory Query Cache & Deduplication:** Caching cerdas pada `borderoApi.js` untuk meredam panggilan API redundan ke backend dengan invalidasi otomatis saat mutasi.
 * **Audit Trail & Detail Modal (Eye Action Icon):** Tabel riwayat ETL dilengkapi tombol aksi **Mata (Detail)** yang membuka modal rincian eksekusi (*Execution Overview*, *Column Mapping Results*, dan *Technical Audit Trail*).
 * **User Guide Bebas Layout Shift:** Tab navigasi dengan fixed-border dan kontainer `min-h-[420px]` untuk menjamin stabilitas antarmuka saat pengguna berpindah tab.
 * **Unified COB Data Viewer & Ekspor Data:** Penampil tabel transaksi live PostgreSQL untuk Lini Bisnis Properti/Fire dan Keuangan/Kredit dengan mode *Per Cedant* maupun *Semua Cedant (Agregasi)*, filter status validitas data (*Valid* vs *Warning*), pencarian interaktif, dan modal ekspor Excel/CSV.

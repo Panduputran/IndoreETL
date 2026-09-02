@@ -338,7 +338,8 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
         return 0
 
     df_db = df.copy()
-    df_db.columns = [sanitize_column_name(c) for c in df_db.columns]
+    raw_sanitized_cols = [sanitize_column_name(c) for c in df_db.columns]
+    df_db.columns = make_unique_column_names(raw_sanitized_cols)
 
     if "id" in df_db.columns:
         df_db = df_db.drop(columns=["id"])
@@ -346,7 +347,7 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     # ------------------------------------------------------------------
     # 1. SMART NOTE HANDLING
     # ------------------------------------------------------------------
-    note_cols = [c for c in df_db.columns if re.match(r"^note(_\d+)?$", c)]
+    note_cols = [c for c in df_db.columns if c == "note" or c.startswith("note_")]
     header_junk_keywords = [
         "no.", "claim", "policy", "insured", "cob", "risk", "cat", 
         "uw year", "period", "start", "end", "occupation", "tsi", "premi", 
@@ -358,7 +359,10 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
         for idx, row in df_db.iterrows():
             row_notes = []
             for nc in note_cols:
-                val = str(row[nc]).strip() if pd.notna(row[nc]) and row[nc] is not None else ""
+                raw_val = row[nc]
+                if isinstance(raw_val, (pd.Series, np.ndarray, list)):
+                    raw_val = " ".join(str(x) for x in raw_val if pd.notna(x))
+                val = str(raw_val).strip() if pd.notna(raw_val) and raw_val is not None else ""
                 val_lower = val.lower()
 
                 if val and val_lower not in ["nan", "none", "null", "<na>", "-", "nil"]:
@@ -368,7 +372,7 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
             
             combined_notes.append(", ".join(row_notes) if row_notes else None)
         
-        df_db.drop(columns=note_cols, inplace=True)
+        df_db = df_db.drop(columns=note_cols)
 
     df_db["note"] = combined_notes if note_cols else None
 
