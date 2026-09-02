@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-
+from app.core.config import SHEET_TO_TABLE_MAPPING
 from app.database.connection import SessionLocal
 from app.database.loader import insert_data_to_db, load_dataframe_to_postgres
 from app.models.etl_log import EtlActivityLog
@@ -58,7 +58,7 @@ class ProcessETLRequest(BaseModel):
 
 class FileMappingPayload(BaseModel):
     file_id: str
-    category: Optional[str] = "premi"
+    category: Optional[str] = "claim"
     cob: Optional[str] = "fire"
     period: Optional[str] = ""
     received_date: Optional[str] = ""
@@ -145,16 +145,34 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 raise HTTPException(status_code=404, detail=f"Berkas {file_info.file_id} tidak ditemukan.")
 
             # ------------------------------------------------------------------
-            # 1. Override & target Table Construction
+            # 1. TARGET TABLE CONSTRUCTION (STRICT CONFIG.PY SYNC)
             # ------------------------------------------------------------------
             clean_cat = re.sub(r"[^a-zA-Z0-9_]", "", str(file_info.category or "claim").lower())
             clean_ced = re.sub(r"[^a-zA-Z0-9_]", "", payload.cedant_code.lower())
 
-            raw_cob = str(file_info.cob or "fire").lower()
-            if "credit" in raw_cob or not raw_cob:
-                raw_cob = "fire"
+            raw_sheet = str(file_info.selected_sheet or "").lower().strip()
+            raw_cob_input = str(file_info.cob or "").lower().strip()
 
-            clean_cob = re.sub(r"[^a-zA-Z0-9_]", "", raw_cob)
+            # A. Cek pencocokan eksplisit dari SHEET_TO_TABLE_MAPPING di config.py
+            detected_cob_from_config = SHEET_TO_TABLE_MAPPING.get(raw_sheet)
+
+            # B. Evaluasi Hierarki COB
+            if detected_cob_from_config:
+                clean_cob = detected_cob_from_config
+            elif any(fc in clean_ced for fc in ["aca", "buana", "buanaindependent", "tripakarta", "tugu", "astra"]):
+                clean_cob = "fire"
+            elif any(cc in clean_ced for cc in ["jakre", "jakrejabar", "jamkrida", "jamkridajabar", "askrida"]):
+                clean_cob = "credit"
+            else:
+                if "credit" in raw_cob_input or "kredit" in raw_cob_input:
+                    clean_cob = "credit"
+                elif "fire" in raw_cob_input or "kebakaran" in raw_cob_input:
+                    clean_cob = "fire"
+                elif raw_cob_input:
+                    clean_cob = re.sub(r"[^a-zA-Z0-9_]", "", raw_cob_input)
+                else:
+                    clean_cob = "fire"
+
             target_table_name = f"{clean_cat}_{clean_ced}_{clean_cob}"
 
             # 2. Baca data berdasarkan format berkas (CSV vs Excel)
@@ -212,13 +230,13 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
             rename_map = {}
             active_non_ipr_columns = []
             
-            # Mapping Standar IPR (target_db_field -> source_column)
+            # Mapping Standar IPR
             for target_field, source_col in (file_info.column_mapping or {}).items():
                 if source_col and source_col in df_raw.columns:
                     clean_target = re.sub(r"[^a-zA-Z0-9_]", "_", target_field.strip().lower())
                     rename_map[source_col] = clean_target
 
-            # Mapping Kolom Non-IPR (Hanya yang enabled == True)
+            # Mapping Kolom Non-IPR
             if file_info.non_ipr_mapping:
                 for source_col, cfg in file_info.non_ipr_mapping.items():
                     if isinstance(cfg, dict):
@@ -233,7 +251,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                         rename_map[source_col] = clean_non_ipr
                         active_non_ipr_columns.append({"source": source_col, "target": clean_non_ipr})
 
-            # Terapkan rename secara aman dengan penanganan kolom duplikat
+            # Rename kolom secara aman
             seen_targets = {}
             new_col_names = []
             for col in df_raw.columns:
@@ -252,19 +270,16 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
             keep_cols = [c for c in new_col_names if not c.startswith("__drop__")]
             df_transformed = df_raw[keep_cols].copy() if keep_cols else df_raw.copy()
 
-          # 4. Format Periode & Cedant Name
+            # 4. Format Periode & Cedant Name
             raw_period = str(file_info.period or "").strip()
             raw_year = str(file_info.received_date or "").strip()
             full_period = f"{raw_period.upper()} {raw_year}".strip() if (raw_year and raw_year not in raw_period) else raw_period.upper().strip()
 
-            # Hapus jika kolom period / cedant_name sudah ada sebelumnya agar tidak ganda
             for reserved_col in ["period", "cedant_name"]:
                 if reserved_col in df_transformed.columns:
                     df_transformed.drop(columns=[reserved_col], inplace=True)
 
-            # ------------------------------------------------------------------
-            # REORDER: Pastikan period dan cedant_name ditaruh di PALING KANAN
-            # ------------------------------------------------------------------
+            # Posisi period dan cedant_name ditaruh di DataFrame
             df_transformed["period"] = full_period
             df_transformed["cedant_name"] = cedant_label
 
@@ -284,9 +299,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
 
                 df_transformed.reset_index(drop=True, inplace=True)
 
-            # ------------------------------------------------------------------
-            # FIX: Chunking Manual Insert per 200 baris untuk cegah Bind Parameter Limit
-            # ------------------------------------------------------------------
+            # 6. Execution Load ke Database
             chunk_size = 200
             total_rows_loaded = 0
             
@@ -294,13 +307,12 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 for i in range(0, len(df_transformed), chunk_size):
                     df_chunk = df_transformed.iloc[i : i + chunk_size].copy()
                     loaded = load_dataframe_to_postgres(df_chunk, target_table_name)
-                    # Apabila load_dataframe_to_postgres mengembalikan None, pakai panjang chunk
                     total_rows_loaded += (loaded if isinstance(loaded, int) else len(df_chunk))
             
             rows_loaded = total_rows_loaded
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # 6. Catat aktivitas ke etl_activity_log
+            # 7. Catat Log Aktivitas
             try:
                 file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
                 with SessionLocal() as db_session:
@@ -343,7 +355,7 @@ def process_etl_with_mapping(payload: EtlMappingRequest):
                 err_entry = EtlActivityLog(
                     cedant_code=payload.cedant_code.lower(),
                     cedant_name=str(payload.cedant_name or payload.cedant_code).upper().strip(),
-                    cob="FIRE",
+                    cob="UNKNOWN",
                     category="claim",
                     target_table="error_log",
                     period="",

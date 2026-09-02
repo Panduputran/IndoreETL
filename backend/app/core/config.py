@@ -338,26 +338,53 @@ MASTER_COLUMNS_CLAIM = {
     ],
 }
 
+
+# ==============================================================================
+# SHEET_TO_TABLE_MAPPING (STANDARDIZED: ALL VALUES MUST USE ENGLISH 'credit', 'fire')
+# ==============================================================================
 SHEET_TO_TABLE_MAPPING = {
-    # --- JAMKRIDAJABAR / JAKRE JABAR ---
-    "klaim": "kredit",
-    "restitusi": "kredit",
-    "subrogasi": "kredit",
-    "detail premi": "kredit",
-    "premi jj": "kredit",
-    "klaim jj": "kredit",
-    "klaim jakre": "kredit",
-    "detail klaim": "kredit",
-    # --- ACA SPESIFIK (Semua Key Wajib Lowercase!) ---
+    # --- JAMKRIDAJABAR / JAKRE JABAR / ASKRIDA (KREDIT / CREDIT) ---
+    "klaim": "credit",
+    "restitusi": "credit",
+    "subrogasi": "credit",
+    "detail premi": "credit",
+    "premi jj": "credit",
+    "klaim jj": "credit",
+    "klaim jakre": "credit",
+    "detail klaim": "credit",
+    "kredit": "credit",
+    "credit": "credit",
+    "asuransi kredit": "credit",
+    "penjaminan": "credit",
+    
+    # --- ASKRIDA CLAIM & PREMI ---
+    "premi credit qs": "credit",
+    "premi credit": "credit",
+    "premi_credit": "credit",
+    "credit qs": "credit",
+    "qs credit": "credit",
+    "klaim qs tw 1": "credit",
+    "klaim qs tw 2": "credit",
+    "klaim qs tw 3": "credit",
+    "klaim qs tw 4": "credit",
+    "claim qs tw 1": "credit",
+    "claim qs tw 2": "credit",
+    "claim qs tw 3": "credit",
+    "claim qs tw 4": "credit",
+
+    # --- ACA SPESIFIK ---
     "non marine": "fire",
     "non-marine": "fire",
     "nonmarine": "fire",
     "non_marine": "fire",
-    "marine": "cargo",
-    # --- ACA / TRIPAKARTA ---
+    "fire": "fire",
+    "kebakaran": "fire",
+
+    # --- ACA / TRIPAKARTA / BUANA INDEPENDENT ---
     "property": "fire",
     "mv": "motor",
     "motor vehicle": "motor",
+    "motor": "motor",
     "marine cargo": "cargo",
     "cargo": "cargo",
     "marine hull": "hull",
@@ -368,30 +395,15 @@ SHEET_TO_TABLE_MAPPING = {
     "travel": "travel",
     "credit ins sbqs": "credit",
     "surety ship sbqs": "surety",
+    "surety": "surety",
     "misc": "misc",
     "pa": "pa",
-    # --- BUANA INDEPENDENT ---
+
+    # --- BUANA INDEPENDENT & GENERAL CLAIMS ---
     "premium qs": "fire",
     "premium spl": "fire",
     "premium_qs": "fire",
     "premium_spl": "fire",
-    # --- ASKRIDA ---
-    "premi credit qs": "credit",
-    "premi credit": "credit",
-    "premi_credit": "credit",
-    "credit qs": "credit",
-    "qs credit": "credit",
-    "credit": "credit",
-    # --- ASKRIDA Claim ---
-    "klaim qs tw 1": "kredit",
-    "klaim qs tw 2": "kredit",
-    "klaim qs tw 3": "kredit",
-    "klaim qs tw 4": "kredit",
-    "claim qs tw 1": "kredit",
-    "claim qs tw 2": "kredit",
-    "claim qs tw 3": "kredit",
-    "claim qs tw 4": "kredit",
-    # --- CLAIM ---
     "claims qs": "fire",
     "claims spl": "fire",
     "claims_qs": "fire",

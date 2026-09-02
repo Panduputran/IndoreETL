@@ -68,9 +68,57 @@ def force_clean_numeric(v):
         return 0.0
 
 
+def force_clean_bigint(val):
+    """
+    Ekstrak digit angka murni dari string (misal '(Number: 123)' -> 123).
+    Mengembalikan None (NULL DB) jika tidak ada angka valid.
+    """
+    if pd.isna(val) or val is None:
+        return None
+    val_str = str(val).strip()
+
+    match = re.search(r"\d+", val_str)
+    if match:
+        return int(match.group(0))
+    return None
+
+
+def force_clean_timestamp(val):
+    """
+    Memastikan nilai bertipe TIMESTAMP valid. Jika berisi angka '0', string kosong,
+    numerik bukan tanggal, atau teks sampah, kembalikan None (NULL DB).
+    """
+    if pd.isna(val) or val is None:
+        return None
+    val_str = str(val).strip()
+    val_lower = val_str.lower()
+
+    # 1. Cek string kosong / null / nol murni
+    if val_lower in ["", "nan", "none", "null", "<na>", "-", "nil", "nat", "0", "0.0", "0.00", "00-00-0000"]:
+        return None
+
+    # 2. Tangkap semua digit angka murni yang BUKAN format tanggal (misal: "0", "1", "100")
+    if re.match(r"^-?\d+(\.\d+)?$", val_str):
+        if len(val_str) < 8:
+            return None
+
+    # 3. Abaikan teks acak yang tidak punya 4 digit tahun
+    if re.search(r"[a-zA-Z%]", val_str) and not re.search(r"\d{4}", val_str):
+        return None
+
+    try:
+        dt = pd.to_datetime(val_str, errors="coerce")
+        if pd.isna(dt):
+            return None
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+
 def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     """
-    Menentukan tipe data DDL PostgreSQL secara akurat, termasuk TIMESTAMP/DATE.
+    Menentukan tipe data DDL PostgreSQL secara akurat tanpa terganggu
+    substring seperti 'sendiri' yang memicu 'end'.
     """
     col_lower = str(col_name).lower().strip()
 
@@ -78,23 +126,16 @@ def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     if col_lower in {"no", "id", "seq", "id_seq", "no_urut", "number"}:
         return "BIGINT"
 
-    # 2. Kolom Tanggal / Timestamp Khusus
-    date_keywords = ["date", "tgl", "time", "dt", "start", "end", "period_of_insurance"]
-    is_date_col = any(dk in col_lower for dk in date_keywords) and not col_lower in {"period", "cedant_name"}
-
-    if is_date_col:
-        # Jika nama kolomnya mengandung kata kunci tanggal/timestamp, jadikan TIMESTAMP
-        return "TIMESTAMP"
-
-    # 3. Kata kunci penanda kolom angka / numerik / keuangan
+    # 2. PRIORITAS UTAMA: Kata kunci penanda kolom angka / numerik / keuangan / retensi
     numeric_keywords = [
         "tsi", "premi", "premium", "claim", "amount", "share", 
         "comm", "komisi", "netto", "gross", "incurred", "loss", 
         "exposure", "rate", "spl", "qs", "surplus", "biaya", 
-        "paid", "fee", "tax", "pajak", "total", "pct", "percent"
+        "paid", "fee", "tax", "pajak", "total", "pct", "percent", 
+        "retensi", "sendiri"
     ]
 
-    # Kata kunci yang PASTI teks (pengecualian)
+    # Kata kunci yang PASTI teks
     text_keywords = [
         "type", "name", "desc", "note", "event", "cause", "code", 
         "info", "class", "status", "no_polis", "policy_no", "claim_no", 
@@ -105,6 +146,18 @@ def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
     is_numeric_name = any(nk in col_lower for nk in numeric_keywords) and not any(tk in col_lower for tk in text_keywords)
     if is_numeric_name:
         return "NUMERIC(20, 2)"
+
+    # 3. PRIORITAS KEDUA: Kolom Tanggal / Timestamp Khusus
+    # Menggunakan regex Word Boundary (\b) agar kata 'sendiri' TIDAK COCOK dengan 'end'
+    is_date_col = False
+    if col_lower not in {"period", "cedant_name"}:
+        if any(dk in col_lower for dk in ["date", "tgl", "time", "period_of_insurance"]):
+            is_date_col = True
+        elif re.search(r"\b(start|end|dt)\b", col_lower):
+            is_date_col = True
+
+    if is_date_col:
+        return "TIMESTAMP"
 
     # Check 2: Auto-Detect dari Sampel Isi Data
     if sample_series is not None and not sample_series.dropna().empty:
@@ -126,31 +179,35 @@ def get_precise_sql_type(col_name: str, sample_series: pd.Series = None) -> str:
 def _psql_insert_copy(table, conn, keys, data_iter):
     r"""
     Handler Pandas to_sql berbasis PostgreSQL COPY Protocol (CSV Mode).
-    Aman dari limit parameter 65.535, teks multiline (\n, \r), 
-    delimiter terpotong, serta nilai liar pada numerik.
+    Dilengkapi sanitasi TIMESTAMP & Numeric langsung pada stream iterasi.
     """
     dbapi_conn = conn.connection
 
-    # Deteksi indeks kolom numerik
     money_keywords = [
         "amount", "claim", "premi", "premium", "tsi", "sum_insured",
         "share", "comm", "netto", "incurred", "loss", "exposure", 
         "net", "roe", "rate", "spl", "qs", "surplus", "biaya", "paid",
-        "fee", "tax", "pajak", "total", "pct", "percent"
+        "fee", "tax", "pajak", "total", "pct", "percent", "retensi", "sendiri"
     ]
 
     text_or_date_keywords = [
         "type", "name", "desc", "note", "event", "cause", "code", 
-        "info", "class_of_business", "date", "tgl", "time", "dt", "period"
+        "info", "class_of_business", "date", "tgl", "time", "period"
     ]
 
     numeric_indices = set()
+    date_indices = set()
+
     for idx, col in enumerate(keys):
         c_lower = str(col).lower().strip()
+        # Identifikasi kolom numerik
         if any(mk in c_lower for mk in money_keywords) and not any(
             tx in c_lower for tx in text_or_date_keywords
         ):
             numeric_indices.add(idx)
+        # Identifikasi kolom tanggal/timestamp
+        elif any(dk in c_lower for dk in ["date", "tgl", "time", "dol"]) or re.search(r"\b(start|end|dt)\b", c_lower):
+            date_indices.add(idx)
 
     s_buf = io.StringIO()
     csv_writer = csv.writer(
@@ -160,17 +217,25 @@ def _psql_insert_copy(table, conn, keys, data_iter):
     for row in data_iter:
         clean_row = []
         for idx, val in enumerate(row):
-            # 1. Null / Kosong
+            # 1. Null / Kosong / NaN / Nat / "0" pada kolom tanggal
             if val is None or pd.isna(val):
                 clean_row.append("")
                 continue
 
             val_str = str(val).strip()
-            if val_str.lower() in ["nat", "nan", "none", "null", "<na>", "", "nil"]:
+            val_lower = val_str.lower()
+
+            if val_lower in ["nat", "nan", "none", "null", "<na>", "", "nil"]:
                 clean_row.append("")
                 continue
 
-            # 2. Proteksi Kolom Numerik Murni
+            # 2. Proteksi & Sanitasi Kolom Tanggal / TIMESTAMP pada Iterasi COPY
+            if idx in date_indices:
+                clean_ts = force_clean_timestamp(val)
+                clean_row.append(clean_ts if clean_ts is not None else "")
+                continue
+
+            # 3. Proteksi Kolom Numerik Murni
             if idx in numeric_indices:
                 s = val_str.replace(",", "").replace(" ", "")
                 if s.startswith("(") and s.endswith(")"):
@@ -185,7 +250,7 @@ def _psql_insert_copy(table, conn, keys, data_iter):
                     clean_row.append("0.00")
                 continue
 
-            # 3. Kolom Teks / Tanggal: Bersihkan karakter null byte (\x00)
+            # 4. Kolom Teks Biasa: Bersihkan null byte (\x00)
             clean_val = val_str.replace("\x00", "")
             if re.match(r"^-?\d+\.0$", clean_val):
                 clean_val = clean_val[:-2]
@@ -238,7 +303,8 @@ def ensure_table_schema_exists(df: pd.DataFrame, table_name: str):
 def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     """
     Fungsi utama untuk memasukkan DataFrame ke PostgreSQL menggunakan COPY Protocol.
-    Menjamin HANYA ADA 1 KOLOM 'note' TUNGGAL di tabel database.
+    Menjamin HANYA ADA 1 KOLOM 'note' TUNGGAL di tabel database dan melakukan 
+    sanitasi tipe BIGINT, NUMERIC, & TIMESTAMP.
     """
     if df is None or df.empty:
         return 0
@@ -248,8 +314,11 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
 
     if "id" in df_db.columns:
         df_db = df_db.drop(columns=["id"])
+
+    # ------------------------------------------------------------------
+    # 1. SMART NOTE HANDLING
+    # ------------------------------------------------------------------
     note_cols = [c for c in df_db.columns if re.match(r"^note(_\d+)?$", c)]
-    
     header_junk_keywords = [
         "no.", "claim", "policy", "insured", "cob", "risk", "cat", 
         "uw year", "period", "start", "end", "occupation", "tsi", "premi", 
@@ -257,7 +326,6 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
     ]
 
     combined_notes = []
-    
     if note_cols:
         for idx, row in df_db.iterrows():
             row_notes = []
@@ -265,7 +333,6 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
                 val = str(row[nc]).strip() if pd.notna(row[nc]) and row[nc] is not None else ""
                 val_lower = val.lower()
 
-                # Simpan jika ada teks nyata dan bukan kata sisa header
                 if val and val_lower not in ["nan", "none", "null", "<na>", "-", "nil"]:
                     is_junk_header = any(jk == val_lower or val_lower.startswith(f"{jk} ") for jk in header_junk_keywords)
                     if not is_junk_header:
@@ -273,20 +340,29 @@ def insert_data_to_db(df: pd.DataFrame, table_name: str) -> int:
             
             combined_notes.append(", ".join(row_notes) if row_notes else None)
         
-        # Buang semua kolom note / note_2 / note_3 / note_4 dst dari DataFrame
         df_db.drop(columns=note_cols, inplace=True)
 
-    # Tetapkan HANYA 1 kolom 'note' tunggal
     df_db["note"] = combined_notes if note_cols else None
+
+    # ------------------------------------------------------------------
+    # 2. POSISI TAIL COLUMNS
+    # ------------------------------------------------------------------
     tail_cols = [c for c in ["note", "period", "cedant_name"] if c in df_db.columns]
     main_cols = [c for c in df_db.columns if c not in tail_cols]
     df_db = df_db[main_cols + tail_cols]
 
-    # Clean nilai numerik jika tipe kolomnya NUMERIC
+    # ------------------------------------------------------------------
+    # 3. CLEANING & SANITASI TIPE DATA (BIGINT, NUMERIC, TIMESTAMP)
+    # ------------------------------------------------------------------
     for col in df_db.columns:
         sql_type = get_precise_sql_type(col, df_db[col])
-        if "NUMERIC" in sql_type:
+        
+        if sql_type == "BIGINT":
+            df_db[col] = df_db[col].apply(force_clean_bigint)
+        elif "NUMERIC" in sql_type:
             df_db[col] = df_db[col].apply(force_clean_numeric)
+        elif sql_type == "TIMESTAMP":
+            df_db[col] = df_db[col].apply(force_clean_timestamp)
 
     table_clean = table_name.strip().lower()
     ensure_table_schema_exists(df_db, table_clean)
